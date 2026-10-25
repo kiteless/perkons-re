@@ -75,6 +75,7 @@ compiler and code changes (1.3.0 was built with GCC 15, 1.2.1 with GCC 12):
 | 1.3.0 → 1.3.0 | 14/14 | n/a (reproduces every value exactly) |
 | 1.3.0 → 1.2.1 | 11/14 | runtime sample loading + the patch sites that hook it: 1.2.1 has no per-bank samples |
 | 1.3.0 → 1.1.1 | 10/14 | the same, plus "Sampler P2 config", which 1.1.1 doesn't have |
+| 1.3.0 → 1.2.2 | 11/14 | as 1.2.1 (bug-fix release of 1.2). First port to a release the tooling had never seen: 12 s, P2-config offset found by probe at +0x2c59 |
 
 Along the way the probes caught real layout changes the matcher alone would have got
 wrong (`slots` at 0x200001e0 in 1.1.1, `params` and the voice-4 sub-objects moved in

@@ -11,6 +11,7 @@ sys.path.insert(0, ROOT)
 IMAGES = {
     'v1.1.1': 'perkons_both_v1.1.1-0-g8447464.img',
     'v1.2.1': 'perkons_both_v1.2.1-0-gbcccfd0.img',
+    'v1.2.2': 'perkons_both_v1.2.2-0-g243b10f_force.img',
     'v1.3.0': 'perkons_v1.3.0-0-force.img',
 }
 SYMBOLS_V130 = os.path.join(ROOT, 'symbols', 'v1.3.0-m7.json')
