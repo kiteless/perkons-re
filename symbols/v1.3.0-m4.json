@@ -50,7 +50,10 @@
     "fx_bbd_process": "0x08104840",
     "fx_proc_alt": "0x081045d8",
     "fx_sai3_half_cb": "0x08104ebc",
-    "fx_sai3_cplt_cb": "0x08104f34"
+    "fx_sai3_cplt_cb": "0x08104f34",
+    "fx_sai3_init": "0x08108ac8",
+    "fx_init": "0x08104a48",
+    "fx_update": "0x08104b74"
   },
   "globals": {
     "ipc_streams": "0x38000000",
@@ -59,7 +62,9 @@
     "device_json_schema": "0x08127954",
     "fx_process_fnptr": "0x10000808",
     "sample_table": "0x2401ffb4",
-    "sample_data": "0x240200e4"
+    "sample_data": "0x240200e4",
+    "fx_bbd_state": "0x10028538",
+    "fx_bbd_line": "0x100285c0"
   },
   "ipc": {
     "desc": "0x38000000",
@@ -119,5 +124,19 @@
       "call": "ipc_send",
       "_note": "stream-1 voice params (0x30 bytes)"
     }
+  },
+  "_struct_fx_bbd_state": {
+    "_comment": "float unless noted",
+    "stages (u32)": "0xc",
+    "write index (u32)": "0x10",
+    "line (float*)": "0x14",
+    "clock ticks per sample": "0x1c",
+    "1/ticks": "0x20",
+    "input history": "0x24",
+    "phase": "0x44",
+    "vintage (u8)": "0x48",
+    "filter coeffs": "0x54..0x78",
+    "feedback": "0x7c",
+    "last output": "0x80"
   }
 }
