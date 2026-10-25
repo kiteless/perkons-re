@@ -86,6 +86,35 @@ class Patcher:
         self.changes.append(Change(seg, addr, b'', blob, why + ' [cave]'))
         return addr
 
+    # -- symbol-aware patching (patches should use these, not raw addresses) -------------
+    # They need self.symbols = {'m4': Symbols, 'm7': Symbols} (tools/build.py sets it).
+
+    def site(self, seg, name):
+        return self.symbols[seg].site(name)
+
+    def redirect_call(self, seg, site, new_target, why):
+        """Site is `bl <fn>`: make it `bl new_target`."""
+        s = self.site(seg, site)
+        old = self.symbols[seg].fn[s['call']]
+        self.write(seg, s['addr'], thumb_bl(s['addr'], new_target), thumb_bl(s['addr'], old), why)
+
+    def replace_with_call(self, seg, site, new_target, why):
+        """Site is a 4-byte instruction (`bytes`): replace it with `bl new_target`."""
+        s = self.site(seg, site)
+        if len(s['bytes']) != 4:
+            raise PatchError(f'{site}: can only replace a 4-byte instruction with a bl')
+        self.write(seg, s['addr'], thumb_bl(s['addr'], new_target), s['bytes'], why)
+
+    def replace_word(self, seg, site, new, why):
+        """Site is a literal (`word`): replace its value."""
+        s = self.site(seg, site)
+        self.write_u32(seg, s['addr'], new, s['word'], why)
+
+    def cave_origin(self, seg, align=16):
+        """Address the next append() to this segment will land at."""
+        s = self._seg(seg)
+        return (s.addr + len(self._data[seg]) + align - 1) & ~(align - 1)
+
     # -- output ----------------------------------------------------------------------
     def result(self) -> Image:
         out = Image(product=self.img.product, field2=self.img.field2, major=self.img.major,

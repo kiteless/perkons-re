@@ -68,15 +68,56 @@
     "magic": "0xc0ffee00"
   },
   "_struct_device_config": {
-    "clock-source": "0x0", "clock-in-ppqn": "0x1", "clock-out-ppqn": "0x2", "kit-link": "0x3",
-    "pot-catch": "0x4", "accent": "0x5", "smooth-param-rec": "0x6", "vintage-bbd": "0x7",
-    "trig-key-behav": "0x8", "hard-filter-sw": "0x9", "kit-fx-load": "0xa", "invert-odds": "0xb",
-    "hide-cursor": "0xc", "bbd-sync": "0xd", "mute-sound": "0xe", "track-rotate": "0xf",
-    "sampler-config": "0x10", "quantize-tune": "0x11", "trig-sensetivity[4]": "0x12",
-    "midi-clock-out": "0x16", "midi-cont-clock": "0x17", "midi-thru": "0x18", "midi-seq-out": "0x19",
-    "midi-cc-out": "0x1a", "midi-velocity": "0x1b", "midi-cc-in": "0x1c", "midi-mode": "0x1d",
-    "midi-channel[5]": "0x1e", "midi-trig-note[4]": "0x23"
+    "clock-source": "0x0",
+    "clock-in-ppqn": "0x1",
+    "clock-out-ppqn": "0x2",
+    "kit-link": "0x3",
+    "pot-catch": "0x4",
+    "accent": "0x5",
+    "smooth-param-rec": "0x6",
+    "vintage-bbd": "0x7",
+    "trig-key-behav": "0x8",
+    "hard-filter-sw": "0x9",
+    "kit-fx-load": "0xa",
+    "invert-odds": "0xb",
+    "hide-cursor": "0xc",
+    "bbd-sync": "0xd",
+    "mute-sound": "0xe",
+    "track-rotate": "0xf",
+    "sampler-config": "0x10",
+    "quantize-tune": "0x11",
+    "trig-sensetivity[4]": "0x12",
+    "midi-clock-out": "0x16",
+    "midi-cont-clock": "0x17",
+    "midi-thru": "0x18",
+    "midi-seq-out": "0x19",
+    "midi-cc-out": "0x1a",
+    "midi-velocity": "0x1b",
+    "midi-cc-in": "0x1c",
+    "midi-mode": "0x1d",
+    "midi-channel[5]": "0x1e",
+    "midi-trig-note[4]": "0x23"
   },
   "_json_schema_format": "schema = {entry *entries, u32 count}; entry (20 B) = {char *key, u32 struct_offset, u32 type, void *enum_table, schema *nested}; type 0x80 bool(u8), 0x81 u8, 0x86 enum, 0x87 nested object",
-  "_sample_table_format": "per sample (1..3) 0x4c bytes: u32 offset, u32 size_bytes, u32 cue[16], u8 n_cues @0x48"
+  "_sample_table_format": "per sample (1..3) 0x4c bytes: u32 offset, u32 size_bytes, u32 cue[16], u8 n_cues @0x48",
+  "sites": {
+    "_comment": "named patch points (see the M7 file)",
+    "boot_init.call_load_samples": {
+      "addr": "0x081016e0",
+      "call": "load_samples"
+    },
+    "switch_bank.call_load_samples": {
+      "addr": "0x081025b6",
+      "call": "load_samples"
+    },
+    "boot_load_last_bank.call_load_samples": {
+      "addr": "0x081026c0",
+      "call": "load_samples"
+    },
+    "ui.call_ipc_send_params": {
+      "addr": "0x08101456",
+      "call": "ipc_send",
+      "_note": "stream-1 voice params (0x30 bytes)"
+    }
+  }
 }

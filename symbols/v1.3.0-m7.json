@@ -11,10 +11,22 @@
     "audio_dma_buf": "0x10040000"
   },
   "slot_extents": [
-    ["0x20000280", "0x200006a4"],
-    ["0x200006e8", "0x20000b40"],
-    ["0x20003a48", "0x20007860"],
-    ["0x20000b80", "0x20003a48"]
+    [
+      "0x20000280",
+      "0x200006a4"
+    ],
+    [
+      "0x200006e8",
+      "0x20000b40"
+    ],
+    [
+      "0x20003a48",
+      "0x20007860"
+    ],
+    [
+      "0x20000b80",
+      "0x20003a48"
+    ]
   ],
   "_slot_extents_comment": "[start,end) of each slot object incl. its inline engines, indexed by original voice. Ends = next global after the object, confirmed by emulator read/write tracing of all algos/modes.",
   "main_points": {
@@ -22,7 +34,13 @@
     "wire_block_start": "0x08027c9c",
     "wire_block_end": "0x08027cb6",
     "loop_head": "0x08027cce",
-    "loop_regs": {"r4": "0x08023ea5", "r5": "0x20000208", "r6": "0x20000218", "r7": "0x20000b74", "r8": "0x200001e0"}
+    "loop_regs": {
+      "r4": "0x08023ea5",
+      "r5": "0x20000208",
+      "r6": "0x20000218",
+      "r7": "0x20000b74",
+      "r8": "0x200001e0"
+    }
   },
   "ipc": {
     "_comment": "lwrb-style rings set up by the M4: desc {buf,size,w,r,...} x4, 4 KB buffers",
@@ -35,7 +53,6 @@
     "_comment": "newlib _sbrk: heap starts at bss_end, limit = stack_top_literal - 0x400. Only newlib uses it (rand state, stdio).",
     "sbrk": "0x080286c8",
     "heap_end_var": "0x20007aa8",
-    "limit_literal": "0x0802870c",
     "min_stack": "0x400"
   },
   "shared_engine_state": {
@@ -86,23 +103,92 @@
     "crush_static": "0x20007860",
     "sampler_static": "0x20007864"
   },
-  "cVoice": {
-    "_comment": "field offsets in every cVoice-derived object",
-    "vptr": "0x0",
-    "algo": "0x4",
-    "mode": "0x5",
-    "velocity": "0x6",
-    "accent": "0x7",
-    "param_ptrs": "0xc",
-    "mute": "0xb8",
-    "gain": "0xbc",
-    "vtable": ["trigger", "init", "update", "render_sample"]
-  },
   "objects": {
     "_comment": "absolute addresses of constructed objects (slot -> engines by algo index)",
-    "cFirstSlot":  {"addr": "0x20000280", "engines": {"0": "cWaveMorphWide@+0x2f4", "1": "cFoldDrumOld@+0xc8", "2": "cPulseDrum@+0x200"}},
-    "cSecondSlot": {"addr": "0x200006e8", "engines": {"_note": "cFoldDrum@+0xc8, cComplexDrum@+0x200, cWaveMorphWide@+0x328 (algo mapping TBD)"}},
-    "cThirdSlot":  {"addr": "0x20003a48"},
-    "cFourthSlot": {"addr": "0x20000b80", "samples": "cSamplePlayer@+0x2a90"}
+    "cFirstSlot": {
+      "addr": "0x20000280",
+      "engines": {
+        "0": "cWaveMorphWide@+0x2f4",
+        "1": "cFoldDrumOld@+0xc8",
+        "2": "cPulseDrum@+0x200"
+      }
+    },
+    "cSecondSlot": {
+      "addr": "0x200006e8",
+      "engines": {
+        "_note": "cFoldDrum@+0xc8, cComplexDrum@+0x200, cWaveMorphWide@+0x328 (algo mapping TBD)"
+      }
+    },
+    "cThirdSlot": {
+      "addr": "0x20003a48"
+    },
+    "cFourthSlot": {
+      "addr": "0x20000b80",
+      "samples": "cSamplePlayer@+0x2a90"
+    }
+  },
+  "offsets": {
+    "_comment": "struct field offsets used by patch code (become OFF_<a>_<b> in fw_syms.h)",
+    "cVoice.algo": "0x4",
+    "cVoice.mode": "0x5",
+    "cVoice.velocity": "0x6",
+    "cVoice.accent": "0x7",
+    "cVoice.param_ptrs": "0xc",
+    "cVoice.mute": "0xb8",
+    "cVoice.gain": "0xbc",
+    "cFourthSlot.crush": "0x320",
+    "cFourthSlot.sampler": "0x2a90",
+    "cFourthSlot.p2cfg": "0x2c6d",
+    "cSamplePlayer.sample_ptr": "0xe4"
+  },
+  "vtable_cVoice": [
+    "trigger",
+    "init",
+    "update",
+    "render_sample"
+  ],
+  "constants": {
+    "_comment": "become CONST_<name> in fw_syms.h",
+    "sampler_voice": "3"
+  },
+  "sites": {
+    "_comment": "named patch points. call: the bl there targets that function; bytes: exact instruction bytes; word: literal value",
+    "main.call_wire_voices": {
+      "addr": "0x08027c9e",
+      "call": "wire_voices"
+    },
+    "main.cfg_unknown_recv": {
+      "addr": "0x08027d08",
+      "call": "ipc_recv",
+      "_note": "stream-3 messages of unknown type are received and dropped here"
+    },
+    "main.call_sample_load_a": {
+      "addr": "0x08027dd8",
+      "call": "cSamplePlayer_load_a",
+      "_note": "type-3 {1}: r0 = slots[3]+sampler, r1 = 0"
+    },
+    "main.call_sample_load_b": {
+      "addr": "0x08027e1e",
+      "call": "cSamplePlayer_load_b",
+      "_note": "type-3 {0}: r0 = slots[3]+sampler"
+    },
+    "main.store_p2cfg": {
+      "addr": "0x08027d30",
+      "bytes": "82f86d3c",
+      "_note": "strb.w r3, [r2, #0xc6d]: r2 = slots[3]+0x2000, r3 = value"
+    },
+    "cFourthSlot_render.call_sampler_render": {
+      "addr": "0x0802583a",
+      "call": "cSamplePlayer_render"
+    },
+    "cFourthSlot_render.call_crush_render": {
+      "addr": "0x08025856",
+      "call": "cNoiseCrush_render"
+    },
+    "sbrk.limit_literal": {
+      "addr": "0x0802870c",
+      "word": "0x20020000",
+      "_note": "heap limit = this - min_stack"
+    }
   }
 }

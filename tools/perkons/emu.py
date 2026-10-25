@@ -52,6 +52,19 @@ class Symbols:
         self.mem = {k: _h(v) for k, v in self.raw['memory'].items() if not k.startswith('_')}
         self.fn = {k: _h(v) for k, v in self.raw['functions'].items() if not k.startswith('_')}
         self.g = {k: _h(v) for k, v in self.raw['globals'].items() if not k.startswith('_')}
+        self.off = {k: _h(v) for k, v in self.raw.get('offsets', {}).items() if not k.startswith('_')}
+        self.const = {k: _h(v) for k, v in self.raw.get('constants', {}).items() if not k.startswith('_')}
+        self.sites = {k: v for k, v in self.raw.get('sites', {}).items() if not k.startswith('_')}
+
+    def site(self, name):
+        """A named patch point: {'addr': int, and 'call': fn name | 'bytes': bytes | 'word': int}."""
+        s = dict(self.sites[name])
+        s['addr'] = _h(s['addr'])
+        if 'bytes' in s:
+            s['bytes'] = bytes.fromhex(s['bytes'])
+        if 'word' in s:
+            s['word'] = _h(s['word'])
+        return s
 
 
 class CoreEmu:

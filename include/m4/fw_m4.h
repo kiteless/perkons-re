@@ -1,5 +1,5 @@
-/* Perkons M4 firmware interface for patch code (v1.3.0).
- * Addresses come from the generated fw_syms.h (symbols/v1.3.0-m4.json). */
+/* Perkons M4 firmware interface for patch code.
+ * Every address comes from the generated fw_syms.h (symbols/<version>-m4.json). */
 #pragma once
 #include <stdint.h>
 #include "fw_syms.h"

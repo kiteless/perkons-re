@@ -1,6 +1,6 @@
 /* Template for a C patch: wraps one firmware call and changes nothing.
  *
- * Hook: main()'s `bl wire_voices` (0x08027c9e) -> pk_example_wire.
+ * Hook: main()'s `bl wire_voices` (site main.call_wire_voices) -> pk_example_wire.
  *
  * Rules for cave code (enforced by tools/perkons/cbuild.py):
  *   - no initialized or zero-initialized globals (.data/.bss): the firmware's startup

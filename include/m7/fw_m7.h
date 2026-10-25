@@ -1,5 +1,7 @@
-/* Perkons M7 firmware interface for patch code (v1.3.0).
- * Addresses come from the generated fw_syms.h (symbols/v1.3.0-m7.json). */
+/* Perkons M7 firmware interface for patch code.
+ * Every address and offset comes from the generated fw_syms.h (symbols/<version>-m7.json),
+ * so code using only these names builds unchanged for any firmware version that has
+ * a symbols file. */
 #pragma once
 #include <stdint.h>
 #include "fw_syms.h"
@@ -14,18 +16,24 @@ typedef struct {
     int16_t (*render)(cVoice *);
 } cVoice_vtbl;
 
-struct cVoice {                 /* only the fields we touch; see docs/architecture.md */
+struct cVoice {                 /* C++ object: vptr first; other fields via OFF_cVoice_* */
     const cVoice_vtbl *vtbl;
-    uint8_t algo, mode, velocity, accent;
 };
+
+#define FW_FIELD(obj, off, type) (*(type *)((uint8_t *)(obj) + (off)))
 
 #define FW_SLOTS            ((cVoice **)SYM_slots)              /* cVoice *slots[4] */
 #define FW_PARAMS           ((int32_t (*)[4])SYM_params)        /* int params[4][4] */
-#define FW_SAMPLER_OFF      0x2a90u                             /* cSamplePlayer inside cFourthSlot */
-#define FW_P2CFG_OFF        0x2c6du                             /* sampler P2-config byte in cFourthSlot */
-#define FW_SAMPLE_VOICE     3                                   /* original voice index with the sampler */
-#define FW_MUTE_OFF         0xb8u                               /* cVoice: mute flag */
-#define FW_GAIN_OFF         0xbcu                               /* cVoice: mute fade gain */
+#define FW_ALGO_OFF         OFF_cVoice_algo                     /* u8 algo, mode, velocity, accent */
+#define FW_MODE_OFF         OFF_cVoice_mode
+#define FW_VELOCITY_OFF     OFF_cVoice_velocity
+#define FW_ACCENT_OFF       OFF_cVoice_accent
+#define FW_MUTE_OFF         OFF_cVoice_mute                     /* u8 mute flag */
+#define FW_GAIN_OFF         OFF_cVoice_gain                     /* i32 mute fade gain */
+#define FW_SAMPLER_OFF      OFF_cFourthSlot_sampler             /* cSamplePlayer inside cFourthSlot */
+#define FW_P2CFG_OFF        OFF_cFourthSlot_p2cfg               /* sampler P2-config byte in cFourthSlot */
+#define FW_CRUSH_OFF        OFF_cFourthSlot_crush               /* cNoiseCrush inside cFourthSlot */
+#define FW_SAMPLE_VOICE     CONST_sampler_voice                 /* stock voice index with the sampler */
 
 #define FW_CALL(sym, type)  ((type)((uintptr_t)(sym) | 1u))
 #define fw_wire_voices      FW_CALL(SYM_wire_voices, void (*)(void))
@@ -40,4 +48,3 @@ struct cVoice {                 /* only the fields we touch; see docs/architectu
  * instance of these engines must give each instance its own copy. */
 #define FW_SAMPLER_STATIC   ((volatile uint32_t *)SYM_sampler_static)
 #define FW_CRUSH_STATIC     ((volatile uint32_t *)SYM_crush_static)
-#define FW_CRUSH_OFF        0x320u                              /* cNoiseCrush inside cFourthSlot */
