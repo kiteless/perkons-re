@@ -1,0 +1,21 @@
+# vendor binaries & docs: never commit
+*.img
+*.bin
+*.pdf
+firmware/
+builds/
+out/
+work/
+*.wav
+
+# Ghidra project databases and decompiled output contain the firmware
+ghidra/projects/
+ghidra/out/
+
+# per-machine settings (e.g. PERKONS_MODS)
+local.mk
+
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

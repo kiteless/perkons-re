@@ -1,0 +1,108 @@
+{
+  "_comment": "Cortex-M7 (DSP core) symbols for firmware v1.3.0 (gd5b5810). Names are ours; addresses verified by disassembly.",
+  "segment_base": "0x08020000",
+  "memory": {
+    "data_lma": "0x080d2040",
+    "data_start": "0x20000000",
+    "data_end": "0x200001dc",
+    "bss_start": "0x200001e0",
+    "bss_end": "0x200080b8",
+    "stack_top": "0x20020000",
+    "audio_dma_buf": "0x10040000"
+  },
+  "slot_extents": [
+    ["0x20000280", "0x200006a4"],
+    ["0x200006e8", "0x20000b40"],
+    ["0x20003a48", "0x20007860"],
+    ["0x20000b80", "0x20003a48"]
+  ],
+  "_slot_extents_comment": "[start,end) of each slot object incl. its inline engines, indexed by original voice. Ends = next global after the object, confirmed by emulator read/write tracing of all algos/modes.",
+  "main_points": {
+    "_comment": "addresses inside main() used by the emulator system harness",
+    "wire_block_start": "0x08027c9c",
+    "wire_block_end": "0x08027cb6",
+    "loop_head": "0x08027cce",
+    "loop_regs": {"r4": "0x08023ea5", "r5": "0x20000208", "r6": "0x20000218", "r7": "0x20000b74", "r8": "0x200001e0"}
+  },
+  "ipc": {
+    "_comment": "lwrb-style rings set up by the M4: desc {buf,size,w,r,...} x4, 4 KB buffers",
+    "desc": "0x38000000",
+    "buffers": "0x38000500",
+    "size": "0x1000",
+    "magic": "0xc0ffee00"
+  },
+  "heap": {
+    "_comment": "newlib _sbrk: heap starts at bss_end, limit = stack_top_literal - 0x400. Only newlib uses it (rand state, stdio).",
+    "sbrk": "0x080286c8",
+    "heap_end_var": "0x20007aa8",
+    "limit_literal": "0x0802870c",
+    "min_stack": "0x400"
+  },
+  "shared_engine_state": {
+    "_comment": "globals engines write outside their own object; shared by all instances of an engine",
+    "0x20000054": "newlib _impure_ptr/reent (rand)",
+    "0x20007f6c": "newlib malloc state",
+    "0x20007860": "cNoiseCrush render: u16 counter + s16 held sample (sample&hold) -- function static",
+    "0x20007864": "cSamplePlayer render: held sample for sample-rate reduction -- function static"
+  },
+  "functions": {
+    "audio_render_cb": "0x08023ea4",
+    "reset_handler": "0x08028164",
+    "main": "0x08027bcc",
+    "libc_init_array": "0x0802fb44",
+    "ctor_misc": "0x08027ba8",
+    "ctor_voices": "0x08027e7c",
+    "wire_voices": "0x080241d8",
+    "calib_render_cb": "0x08024000",
+    "ipc_poll": "0x080287c0",
+    "ipc_recv": "0x0802874c",
+    "cVoice_set_algo": "0x08024898",
+    "cVoice_set_mode": "0x0802489c",
+    "cVoice_set_mute": "0x080248a0",
+    "cVoice_set_velocity": "0x080248a8",
+    "cVoice_set_accent": "0x080248bc",
+    "cVoice_tick_mute_fade": "0x08024918",
+    "cSamplePlayer_load_a": "0x08026eb0",
+    "cSamplePlayer_load_b": "0x080270bc",
+    "sbrk": "0x080286c8",
+    "rand": "0x0802f87c",
+    "cFourthSlot_render": "0x08025804",
+    "cSamplePlayer_render": "0x08026d98",
+    "cNoiseCrush_render": "0x080258b0",
+    "noise_next": "0x08029138"
+  },
+  "globals": {
+    "voice_engine": "0x200001e0",
+    "_note_trigger_dispatch": "trigger dispatch is a block inside audio_render_cb at 0x08023f74, not a function",
+    "slots": "0x20000208",
+    "params": "0x200006a4",
+    "ipc_voice_msg": "0x20000b44",
+    "group_v1": "0x200001e0",
+    "group_v2": "0x200006e8",
+    "group_v3": "0x20003a48",
+    "group_v4": "0x20000b80",
+    "render_fn_ptr": "0x20000b74",
+    "ipc_ready": "0x20007aac",
+    "crush_static": "0x20007860",
+    "sampler_static": "0x20007864"
+  },
+  "cVoice": {
+    "_comment": "field offsets in every cVoice-derived object",
+    "vptr": "0x0",
+    "algo": "0x4",
+    "mode": "0x5",
+    "velocity": "0x6",
+    "accent": "0x7",
+    "param_ptrs": "0xc",
+    "mute": "0xb8",
+    "gain": "0xbc",
+    "vtable": ["trigger", "init", "update", "render_sample"]
+  },
+  "objects": {
+    "_comment": "absolute addresses of constructed objects (slot -> engines by algo index)",
+    "cFirstSlot":  {"addr": "0x20000280", "engines": {"0": "cWaveMorphWide@+0x2f4", "1": "cFoldDrumOld@+0xc8", "2": "cPulseDrum@+0x200"}},
+    "cSecondSlot": {"addr": "0x200006e8", "engines": {"_note": "cFoldDrum@+0xc8, cComplexDrum@+0x200, cWaveMorphWide@+0x328 (algo mapping TBD)"}},
+    "cThirdSlot":  {"addr": "0x20003a48"},
+    "cFourthSlot": {"addr": "0x20000b80", "samples": "cSamplePlayer@+0x2a90"}
+  }
+}
