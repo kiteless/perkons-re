@@ -13,7 +13,7 @@ space   := $(subst ,, )
 -include local.mk
 export PERKONS_MODS
 
-.PHONY: help setup tools-check test test-fast test-framework render build unpack ghidra decompile
+.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile
 
 help:
 	@echo "make setup                          create .venv and install pinned deps"
@@ -24,6 +24,7 @@ help:
 	@echo "make unpack                         unpack \$$(IMG) to firmware/unpacked/\$$(VER)"
 	@echo "make render                         render all stock voices of \$$(IMG) to \$$(OUT)/stock"
 	@echo "make build PATCHES='a b:arg'        build builds/<patches>.img + emulator regression"
+	@echo "make release REL=path/to/rel.json   versioned release folder (see tools/release.py)"
 	@echo "make ghidra VER=v1.3.0              import + analyze both cores into ghidra/projects/"
 	@echo "make decompile CORE=m7 FN='main 0x08023ea4'   pseudo-C into ghidra/out/"
 	@echo
@@ -60,6 +61,9 @@ render:
 build:
 	@mkdir -p builds
 	$(PY) tools/build.py $(IMG) builds/$(NAME).img $(PATCHES)
+
+release:
+	$(PY) tools/release.py $(REL)
 
 ghidra:
 	test -f firmware/unpacked/$(VER)/m7.bin || $(PY) tools/fwtool.py unpack $(IMG) firmware/unpacked/$(VER)

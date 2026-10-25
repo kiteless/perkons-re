@@ -17,10 +17,11 @@ regression checks against stock.
 | `tools/thumbdis.py`, `tools/xref.py` | Thumb-2 disassembly with literal annotation; find references to an address |
 | `tools/render_voices.py` | emulate the M7 DSP and render every stock voice/algo/mode to WAV |
 | `tools/build.py` | apply patches → `.img`, then check every output against stock in the emulator |
+| `tools/release.py` | versioned release: patches + `version_stamp`, regression, image + `RELEASE.md` with exact commits |
 | `tools/run_tests.py` | framework tests + mod tests |
 | `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
-| `patches/` | `tag_build` (string-only smoke test) and `example_hook` (template C patch) |
+| `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner) |
 | `symbols/` | per-version addresses and structures (read by the emulator, C builds and Ghidra) |
 | `ghidra/` | headless import + analysis, decompile, and "who references X" query scripts |
 | `docs/architecture.md` | what the firmware looks like inside (both cores, IPC, voice engine, banks/JSON, FX) |
@@ -71,6 +72,15 @@ PERKONS_MODS = ../my-mods
 A mod has `patches/` (patch modules), optionally `src/<core>/` (C), `lib/` (Python
 helpers) and `tests/` (picked up by `make test`). `make build PATCHES=my_patch:arg` finds
 patches in either place. See `tools/perkons/mods.py`.
+
+## Releases
+
+A release definition (JSON, see `tools/release.py`) names the base firmware, the patches
+and a version tag. `make release REL=path/to/release.json` builds it with
+`version_stamp`, runs the regression and writes `builds/releases/<name>-<version>/` with
+the image (official file name) and a `RELEASE.md` recording the base firmware and the
+exact commits used. A stamped unit shows the tag in `INFO.TXT` on its SD card
+(`… version: 1.3.0 - <tag>`).
 
 ## License
 
