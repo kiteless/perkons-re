@@ -40,7 +40,7 @@ REGIONS = [
 
 
 def _h(v):
-    return int(v, 16) if isinstance(v, str) else v
+    return int(v, 0) if isinstance(v, str) else v   # "0x.." hex, otherwise decimal
 
 
 class Symbols:
@@ -466,4 +466,95 @@ class M4Emu(CoreEmu):
                 raise RuntimeError(f'bad IPC header {hdr:08x}')
             out.append((hdr & 0xFF, bytes(raw[8:8 + ln])))
             del raw[:8 + ln]
+        return out
+
+
+class M4FX(M4Emu):
+    """The M4's effect path, as on hardware: fx_init, then the real SAI3 DMA callbacks
+    block by block (16 stereo frames, half / complete alternating), with fx_update every
+    10 ms. Mono send in (left channel), wet out (left channel), like the device.
+
+        fx = M4FX(m4, sym, m7).boot()
+        fx.knobs = {'time': .5, 'feedback': .4, 'rate': 0, 'depth': 0}
+        wet = fx.process(send_samples)
+    """
+
+    POTS = {'rate': 0, 'depth': 1, 'feedback': 2, 'time': 3}
+    BLOCK = 16
+    UPDATE_FRAMES = 480          # fx_update runs from main's 10 ms tick
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.knobs = {'time': 0.5, 'feedback': 0.3, 'rate': 0.0, 'depth': 0.0}
+        self.switch = 0                      # SHORT/LONG GPIO level
+        self._tick = 0
+        f = self.sym.fn
+        self.stub(f['hal_get_tick'], self._get_tick)
+        self.stub(f['hal_gpio_read'], lambda emu, port, pin, *_: self.switch if port == 0x58021000 and pin == 1 else 0)
+        self._toggle = {}
+        self.uc.hook_add(UC_HOOK_MEM_READ, self._periph_toggle, begin=0x40000000, end=0x5FFFFFFF)
+        self._half = 0
+        self._since_update = 0
+        # guard: the effect may only write the current 16-frame output half
+        tx, rx = self.sym.g['fx_tx_buf'], self.sym.g['fx_rx_buf']
+        self._dma_lo, self._dma_hi = min(tx, rx), max(tx, rx) + 0x80
+        self._allowed = None
+        self.bad_writes = []
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, self._dma_guard, begin=self._dma_lo, end=self._dma_hi - 1)
+
+    def _dma_guard(self, uc, access, addr, size, value, _):
+        if self._allowed and not (self._allowed[0] <= addr and addr + size <= self._allowed[1]):
+            self.bad_writes.append((addr, uc.reg_read(A.UC_ARM_REG_PC)))
+
+    def _get_tick(self, emu, *_):
+        self._tick += 1
+        return self._tick
+
+    def _periph_toggle(self, uc, access, addr, size, value, _):
+        t = self._toggle[addr] = self._toggle.get(addr, 0) ^ 1
+        uc.mem_write(addr, (b'\xff' if t else b'\x00') * size)
+
+    def boot(self, after_ram=None):
+        """after_ram(emu): optional, runs after RAM init and before fx_init (e.g. a patch's
+        boot hook that would normally run from boot_init)."""
+        self.init_ram()
+        if after_ram:
+            after_ram(self)
+        self.call(self.sym.fn['fx_init'], max_insns=20_000_000)
+        self.update()
+        return self
+
+    def set_pots(self):
+        for name, idx in self.POTS.items():
+            raw = max(0, min(65535, int(round(self.knobs[name] * 65535))))
+            self.w32(self.sym.g['pot_table'] + idx * 0x1c + 0x18, raw)
+
+    def update(self):
+        self.set_pots()
+        self.call(self.sym.fn['fx_update'])
+
+    def process(self, send):
+        """send: mono int16 samples -> wet: mono int16 samples (same length, padded to blocks)."""
+        out = []
+        n = (len(send) + self.BLOCK - 1) // self.BLOCK * self.BLOCK
+        send = list(send) + [0] * (n - len(send))
+        cb = (self.sym.fn['fx_sai3_half_cb'], self.sym.fn['fx_sai3_cplt_cb'])
+        rx, tx = self.sym.g['fx_rx_buf'], self.sym.g['fx_tx_buf']
+        for k in range(0, n, self.BLOCK):
+            h = self._half
+            frames = b''.join(struct.pack('<hh', s, 0) for s in send[k:k + self.BLOCK])
+            self.uc.mem_write(rx + h * 0x40, frames)
+            self._allowed = (tx + h * 0x40, tx + h * 0x40 + 0x40)
+            self.call(cb[h], self.sym.g['fx_sai_rx_handle'])
+            self._allowed = None
+            if self.bad_writes:
+                a, pc = self.bad_writes[0]
+                raise RuntimeError(f'FX code wrote outside its output block: {a:#x} (pc {pc:#x})')
+            raw = struct.unpack('<32h', self.uc.mem_read(tx + h * 0x40, 0x40))
+            out += raw[0::2]
+            self._half ^= 1
+            self._since_update += self.BLOCK
+            if self._since_update >= self.UPDATE_FRAMES:
+                self._since_update = 0
+                self.update()
         return out

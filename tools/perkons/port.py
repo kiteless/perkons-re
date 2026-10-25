@@ -37,7 +37,7 @@ def coarse(tok):
 
 
 def _h(v):
-    return int(v, 16) if isinstance(v, str) else v
+    return int(v, 0) if isinstance(v, str) else v   # "0x.." hex, otherwise decimal
 
 
 def is_ram(v):
@@ -554,14 +554,68 @@ def port_symbols(old_sym_raw, porter, report):
                 continue
             m = porter.map_insn(_h(v))
             new['main_points'][k] = rec('main_points', k, v, m[0] if m else None, m[1] if m else 'unmatched')
+    mem_old = {k: _h(v) for k, v in old_sym_raw.get('memory', {}).items() if not k.startswith('_')}
+    mem_new = {k: _h(v) for k, v in new.get('memory', {}).items() if not k.startswith('_') and v}
+
+    def map_data_word(a):
+        """A word in the initialised-data image: port the variable's RAM address."""
+        if not {'data_lma', 'data_start', 'data_end'} <= set(mem_old) or \
+                not {'data_lma', 'data_start'} <= set(mem_new):
+            return None
+        off = a - mem_old['data_lma']
+        if not 0 <= off < mem_old['data_end'] - mem_old['data_start']:
+            return None
+        ram, how = porter.map_address(mem_old['data_start'] + off)
+        if ram is None:
+            return None
+        return mem_new['data_lma'] + (ram - mem_new['data_start']), f'.data image word; variable {how}'
+
+    def map_word_value(v):
+        """The value a word site holds: function pointers and addresses move too."""
+        if is_flash(v) and porter.old.containing(v & ~1) is not None:
+            n, _ = porter.map_function(v & ~1)
+            return None if n is None else n | (v & 1)
+        if is_flash(v) or is_ram(v):
+            return porter.map_address(v)[0]
+        return v
+
     for k, s in old_sym_raw.get('sites', {}).items():
         if k.startswith('_'):
             continue
         a = _h(s['addr'])
-        m = porter.map_pool(a) if 'word' in s else porter.map_insn(a)
         ns = dict(s)
+        if 'word' in s:
+            m = map_data_word(a) or porter.map_pool(a)
+            nv = map_word_value(_h(s['word']))
+            if m and nv is None:
+                m = (None, 'word value (a pointer) could not be ported')
+            elif nv is not None:
+                ns['word'] = f'{nv:#010x}'
+        else:
+            m = porter.map_insn(a)
         ns['addr'] = rec('sites', k, s['addr'], m[0] if m else None, m[1] if m else 'unmatched')
         new['sites'][k] = ns
+    # functions reached only through pointer tables in initialised data (e.g. page
+    # objects): find the pointer slot in the old .data image, map the slot, and read the
+    # new firmware's pointer from the corresponding slot
+    if {'data_lma', 'data_start', 'data_end'} <= set(mem_old):
+        img_lo, img_hi = mem_old['data_lma'], mem_old['data_lma'] + mem_old['data_end'] - mem_old['data_start']
+        for k, v in old_sym_raw.get('functions', {}).items():
+            if k.startswith('_') or new['functions'].get(k):
+                continue
+            target = _h(v) | 1
+            for a in range(img_lo, img_hi, 4):
+                if porter.old.u32(a) != target:
+                    continue
+                m = map_data_word(a)
+                nv = porter.new.u32(m[0]) if m else None
+                if nv and nv & 1 and is_flash(nv):
+                    new['functions'][k] = f'{nv & ~1:#010x}'
+                    for i, r in enumerate(report):
+                        if r[0] == 'functions' and r[1] == k:
+                            report[i] = (r[0], r[1], r[2], nv & ~1, f'pointer in .data table ({m[1]})')
+                    break
+
     if 'shared_engine_state' in old_sym_raw:
         st = {}
         for k, v in old_sym_raw['shared_engine_state'].items():

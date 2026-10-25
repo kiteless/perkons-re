@@ -53,7 +53,20 @@
     "fx_sai3_cplt_cb": "0x08104f34",
     "fx_sai3_init": "0x08108ac8",
     "fx_init": "0x08104a48",
-    "fx_update": "0x08104b74"
+    "fx_update": "0x08104b74",
+    "hal_get_tick": "0x08118c20",
+    "hal_delay": "0x08118c2c",
+    "hal_gpio_read": "0x08113228",
+    "pot_value_raw": "0x08108f84",
+    "pot_value": "0x08108f98",
+    "set_led": "0x08109414",
+    "fx_lfo": "0x0810463c",
+    "cfg_event": "0x08106240",
+    "cfg_key": "0x08106260",
+    "cfg_render": "0x08106010",
+    "cfg_exit_save": "0x08106518",
+    "device_json_save": "0x08104120",
+    "sbrk": "0x081091fc"
   },
   "globals": {
     "ipc_streams": "0x38000000",
@@ -64,7 +77,21 @@
     "sample_table": "0x2401ffb4",
     "sample_data": "0x240200e4",
     "fx_bbd_state": "0x10028538",
-    "fx_bbd_line": "0x100285c0"
+    "fx_bbd_line": "0x100285c0",
+    "hal_tick": "0x1002e6ec",
+    "pot_table": "0x1002e0e8",
+    "fx_rx_buf": "0x1002c640",
+    "fx_tx_buf": "0x1002c5c0",
+    "fx_sai_rx_handle": "0x1002dfb8",
+    "fx_time": "0x10028534",
+    "fx_feedback": "0x10028524",
+    "fx_lfo_state": "0x1000080c",
+    "fx_switch_eff": "0x10028531",
+    "fx_kit_ctx": "0x10028528",
+    "clock_state": "0x1000068c",
+    "cfg_dirty": "0x1002c7e4",
+    "cfg_page_table": "0x0812c000",
+    "fx_sync_table": "0x08127e08"
   },
   "ipc": {
     "desc": "0x38000000",
@@ -123,6 +150,52 @@
       "addr": "0x08101456",
       "call": "ipc_send",
       "_note": "stream-1 voice params (0x30 bytes)"
+    },
+    "fx.fnptr_initial": {
+      "addr": "0x0812bf38",
+      "word": "0x08104841",
+      "_note": ".data image: initial value of fx_process_fnptr (fx_bbd_process)"
+    },
+    "fx_set_processor.normal_literal": {
+      "addr": "0x08104e80",
+      "word": "0x08104841",
+      "_note": "pointer installed for normal (non-test) mode"
+    },
+    "fx_update.call_read_switch": {
+      "addr": "0x08104b88",
+      "call": "hal_gpio_read",
+      "_note": "HAL_GPIO_ReadPin(GPIOE, 1): the SHORT/LONG switch"
+    },
+    "cfg_page.event_word": {
+      "addr": "0x0812c000",
+      "word": "0x08106241",
+      "_note": ".data image: config page event handler"
+    },
+    "cfg_page.render_word": {
+      "addr": "0x0812c004",
+      "word": "0x08106011",
+      "_note": ".data image: config page LED renderer"
+    },
+    "device_schema.load_literal": {
+      "addr": "0x0810424c",
+      "word": "0x08127954"
+    },
+    "device_schema.create_literal": {
+      "addr": "0x081042c8",
+      "word": "0x08127954"
+    },
+    "device_schema.save_literal": {
+      "addr": "0x08104130",
+      "word": "0x08127954"
+    },
+    "boot_init.call_config_files_init": {
+      "addr": "0x08101720",
+      "call": "config_files_init"
+    },
+    "sbrk.limit_literal": {
+      "addr": "0x08109238",
+      "word": "0x10048000",
+      "_note": "heap limit = this - min_stack (0x400)"
     }
   },
   "_struct_fx_bbd_state": {
@@ -138,5 +211,26 @@
     "filter coeffs": "0x54..0x78",
     "feedback": "0x7c",
     "last output": "0x80"
+  },
+  "_fx_pots": "pot_value(n): 0 LFO RATE, 1 MOD DEPTH, 2 FEEDBACK, 3 TIME; raw u16 at pot_table + n*0x1c + 0x18, scaled by 1/65536",
+  "heap": {
+    "_comment": "newlib _sbrk: heap starts at bss_end (0x1002efb0), limit = stack top literal - 0x400",
+    "min_stack": "0x400"
+  },
+  "constants": {
+    "_comment": "become CONST_<name> in fw_syms.h",
+    "cfg_key_event": "0x11",
+    "fx_block_frames": "16",
+    "fx_switch_short_level": "1"
+  },
+  "offsets": {
+    "_comment": "struct offsets (OFF_<a>_<b>)",
+    "fx_bbd.stages": "0xc",
+    "fx_bbd.ticks": "0x1c",
+    "fx_bbd.feedback": "0x7c",
+    "fx_lfo.rate": "0x4",
+    "fx_lfo.depth": "0x8",
+    "device_config.bbd_sync": "0xd",
+    "clock.bpm": "0x14"
   }
 }

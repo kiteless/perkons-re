@@ -41,6 +41,9 @@ def verify_sites(raw, seg, rep):
             b = bytes.fromhex(s['bytes'])
             ok = seg.data[a - seg.addr:a - seg.addr + len(b)] == b
             why = 'instruction bytes differ (inspect: offsets or registers may have changed)'
+        elif 'word' in s:
+            ok = int.from_bytes(seg.data[a - seg.addr:a - seg.addr + 4], 'little') == int(s['word'], 16)
+            why = 'word there is not the ported value'
         if not ok:
             s['addr'] = None
             for i, r in enumerate(rep):

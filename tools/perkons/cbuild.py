@@ -1,5 +1,7 @@
 """Compile C patch code for a code cave with arm-none-eabi-gcc.
 
+Functions named pk* are kept even if nothing in the cave calls them (they are hook targets).
+
 Generated headers (in <build>/gen/):
   fw_syms.h      #define SYM_<name> <addr> for every function/global in symbols/*.json
   + whatever the patch passes as extra_headers (e.g. tables generated from the emulator)
@@ -30,7 +32,7 @@ LINKER_SCRIPT = """
 MEMORY {{ CAVE (rx) : ORIGIN = 0x{origin:08x}, LENGTH = 0x{length:x} }}
 ENTRY({entry})
 SECTIONS {{
-  .text : {{ KEEP(*(.text.pk_*)) *(.text*) *(.rodata*) }} > CAVE
+  .text : {{ KEEP(*(.text.pk*)) *(.text*) *(.rodata*) }} > CAVE
   .data : {{ *(.data*) }} > CAVE
   .bss  : {{ *(.bss*) *(COMMON) }} > CAVE
   /DISCARD/ : {{ *(.ARM.*) *(.comment) *(.note*) }}
