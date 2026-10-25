@@ -18,14 +18,17 @@ regression checks against stock.
 | `tools/render_voices.py` | emulate the M7 DSP and render every stock voice/algo/mode to WAV |
 | `tools/build.py` | apply patches → `.img`, then check every output against stock in the emulator |
 | `tools/release.py` | versioned release: patches + `version_stamp`, regression, image + `RELEASE.md` with exact commits |
+| `tools/check_symbols.py` | behavioural checks of a symbols file (each symbol does what we think, in the emulator) |
+| `tools/port_symbols.py` | port symbols to another firmware version: matching + probes + checks + report |
 | `tools/run_tests.py` | framework tests + mod tests |
 | `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
 | `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner) |
-| `symbols/` | per-version addresses and structures (read by the emulator, C builds and Ghidra) |
+| `symbols/` | per-version functions, globals, struct offsets and named patch sites; the only place addresses live (read by the emulator, C builds, patches and Ghidra) |
 | `ghidra/` | headless import + analysis, decompile, and "who references X" query scripts |
 | `docs/architecture.md` | what the firmware looks like inside (both cores, IPC, voice engine, banks/JSON, FX) |
 | `docs/process.md` | the RE → patch → emulate → hardware workflow; flashing, recovery and safety |
+| `docs/porting.md` | moving mods to a new official firmware: symbol porter, probes, checks, rehearsal results |
 
 ## Setup
 
@@ -58,9 +61,12 @@ make build PATCHES=example_hook               # builds/example_hook.img + regres
 ## Writing a mod
 
 Start from `patches/example_hook.py` + `patches/src/m7/example_hook.c`. A patch module
-declares `TARGET` (firmware version), `SUMMARY`, `RISK` and `apply(p, arg=None)`; every
-byte it changes states the bytes it expects to replace, so it can't apply to the wrong
-firmware. C code is compiled into a cave after the segment by `perkons.cbuild`.
+declares `TARGET` (firmware version, or `None` for any), `SUMMARY`, `RISK` and
+`apply(p, arg=None)`. Patch by **name**, never by address: `p.redirect_call(core, site,
+...)`, `p.replace_with_call`, `p.replace_word`, with sites, offsets and constants from
+`symbols/` (C code gets them as `SYM_`/`OFF_`/`CONST_` defines). Every write states the
+bytes it expects to replace, so a patch can't apply to the wrong firmware, and a mod
+written this way ports to a new firmware by porting its symbols (docs/porting.md).
 
 Mods can live outside this repo. Point `PERKONS_MODS` at a mod directory (or a directory
 of mods), e.g. in an untracked `local.mk`:

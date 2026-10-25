@@ -56,6 +56,18 @@ class Symbols:
         self.const = {k: _h(v) for k, v in self.raw.get('constants', {}).items() if not k.startswith('_')}
         self.sites = {k: v for k, v in self.raw.get('sites', {}).items() if not k.startswith('_')}
 
+    def expr(self, text):
+        """Evaluate 'name', 'name+0x10' or 'name|1' over functions/globals (or a plain number)."""
+        text = text.replace(' ', '')
+        thumb = text.endswith('|1')
+        text = text[:-2] if thumb else text
+        name, _, add = text.partition('+')
+        if name.startswith('0x'):
+            v = int(name, 16)
+        else:
+            v = self.fn[name] if name in self.fn else self.g[name]
+        return (v + (int(add, 0) if add else 0)) | (1 if thumb else 0)
+
     def site(self, name):
         """A named patch point: {'addr': int, and 'call': fn name | 'bytes': bytes | 'word': int}."""
         s = dict(self.sites[name])
@@ -246,20 +258,28 @@ def write_wav(path, samples, rate=48000):
 
 
 class M7System(M7Emu):
-    """Runs more of the real firmware: main()'s wiring block, main()'s message loop and
-    the real audio DMA callback, fed by M4-style messages in the shared IPC rings.
-    Use this to test patches that hook main() or the message handlers."""
+    """Runs the real firmware program: main() from its first instruction (so every patch in
+    main and every register it sets up is real), main()'s message loop fed with M4-style
+    messages in the shared IPC rings, and the real audio DMA callback.
+
+    Hardware: peripheral reads alternate all-zeros / all-ones, so "wait until a bit is
+    set" and "wait until a bit is clear" polling loops both exit. Use this for patches."""
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         r = self.sym.raw
-        self.mp = {k: _h(v) for k, v in r['main_points'].items() if not k.startswith('_') and k != 'loop_regs'}
-        self.loop_regs = {k: _h(v) for k, v in r['main_points']['loop_regs'].items()}
+        self.mp = {k: _h(v) for k, v in r['main_points'].items() if not k.startswith('_')}
         self.ipc = {k: _h(v) for k, v in r['ipc'].items() if not k.startswith('_')}
+        self._toggle = {}
+        self.uc.hook_add(UC_HOOK_MEM_READ, self._periph_toggle, begin=0x40000000, end=0x5FFFFFFF)
+
+    def _periph_toggle(self, uc, access, addr, size, value, _):
+        t = self._toggle[addr] = self._toggle.get(addr, 0) ^ 1
+        uc.mem_write(addr, (b'\xff' if t else b'\x00') * size)
 
     def boot(self):
-        """Reset-handler work + ctors, IPC rings as M4 sets them up, then main()'s own
-        wiring block (bl wire_voices + slots[i]->init()), whatever it's been patched to."""
+        """Reset-handler work + ctors, IPC rings as M4 sets them up, the boot messages M4
+        sends (normal render mode, "go"), then main() until its message loop."""
         f, g = self.sym.fn, self.sym.g
         self.init_ram()
         self.call(f['ctor_misc'])
@@ -268,15 +288,19 @@ class M7System(M7Emu):
             d = self.ipc['desc'] + 0x18 * i
             self.uc.mem_write(d, struct.pack('<6I', self.ipc['buffers'] + self.ipc['size'] * i, self.ipc['size'], 0, 0, 0, 0))
         self.w8(g['ipc_ready'], 1)
-        self.w32(g['render_fn_ptr'], self.loop_regs['r4'])  # normal (non-calibration) render callback
-        self.run_range(self.mp['wire_block_start'], self.mp['wire_block_end'], {'r8': self.loop_regs['r8']})
+        self.send(3, 1, b'\x00')     # audio callback: normal (not calibration)
+        self.send(3, 0, b'\x01')     # "go": wire voices, start audio
+        self.run_range(f['main'], self.mp['loop_head'], {}, max_insns=20_000_000)
+        names = [getattr(A, f'UC_ARM_REG_R{i}') for i in range(13)]
+        self.loop_regs = {f'r{i}': self.uc.reg_read(r) for i, r in enumerate(names)}
+        self.loop_sp = self.uc.reg_read(A.UC_ARM_REG_SP)
         return self
 
-    def run_range(self, start, end, regs=None, max_insns=50_000_000):
+    def run_range(self, start, end, regs=None, max_insns=50_000_000, sp=None):
         names = {f'r{i}': getattr(A, f'UC_ARM_REG_R{i}') for i in range(13)}
         for k, v in (regs or {}).items():
             self.uc.reg_write(names[k], v)
-        self.uc.reg_write(A.UC_ARM_REG_SP, self.sym.mem['stack_top'] - 0x400)
+        self.uc.reg_write(A.UC_ARM_REG_SP, sp or self.sym.mem['stack_top'] - 0x400)
         self.uc.emu_start(start | 1, end, count=max_insns)
         pc = self.uc.reg_read(A.UC_ARM_REG_PC)
         if pc != end:
@@ -295,6 +319,13 @@ class M7System(M7Emu):
             w = (w + 1) % size
         self.w32(d + 8, w)
 
+    def uc_disasm(self, addr):
+        """Yield addresses of the instructions following addr (next instruction first)."""
+        from capstone import CS_ARCH_ARM, CS_MODE_MCLASS, CS_MODE_THUMB, Cs
+        md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
+        for ins in md.disasm(bytes(self.uc.mem_read(addr, 16)), addr):
+            yield ins.address + ins.size
+
     def pending(self, stream):
         d = self.ipc['desc'] + 0x18 * stream
         _, _, w, r = struct.unpack('<4I', self.uc.mem_read(d, 16))
@@ -303,13 +334,15 @@ class M7System(M7Emu):
     def pump(self, max_iter=32):
         """Run main()'s message loop until streams 1 and 3 are drained."""
         head = self.mp['loop_head']
-        regs = dict(self.loop_regs)
         for _ in range(max_iter):
             if not (self.pending(1) or self.pending(3)):
                 return
-            # loop head is "add r1, sp, #0x10"; do it here and start after it
-            regs['r1'] = self.sym.mem['stack_top'] - 0x400 + 0x10
-            self.run_range(head + 2, head, regs)
+            # resume main's loop with the registers main itself set up; stop when it comes
+            # back around (start one instruction in, since start == stop would stop at once)
+            first = next(self.uc_disasm(head))
+            self.uc.reg_write(A.UC_ARM_REG_SP, self.loop_sp)
+            self.run_range(head, first, dict(self.loop_regs), sp=self.loop_sp)
+            self.run_range(first, head, None, sp=self.uc.reg_read(A.UC_ARM_REG_SP))
         raise RuntimeError('message loop did not drain')
 
     # -- M4-style messages ------------------------------------------------------------

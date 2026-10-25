@@ -13,7 +13,7 @@ space   := $(subst ,, )
 -include local.mk
 export PERKONS_MODS
 
-.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile
+.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile check-symbols port
 
 help:
 	@echo "make setup                          create .venv and install pinned deps"
@@ -26,6 +26,8 @@ help:
 	@echo "make build PATCHES='a b:arg'        build builds/<patches>.img + emulator regression"
 	@echo "make release REL=path/to/rel.json   versioned release folder (see tools/release.py)"
 	@echo "make ghidra VER=v1.3.0              import + analyze both cores into ghidra/projects/"
+	@echo "make check-symbols VER=v1.3.0       behavioural checks of symbols/<VER>-*.json"
+	@echo "make port FROM=v1.3.0 TO=v1.4.0     port symbols to a new firmware (see docs/porting.md)"
 	@echo "make decompile CORE=m7 FN='main 0x08023ea4'   pseudo-C into ghidra/out/"
 	@echo
 	@echo "mods (out-of-tree patches): PERKONS_MODS=$(PERKONS_MODS)"
@@ -71,3 +73,10 @@ ghidra:
 
 decompile:
 	ghidra/decompile.sh $(VER) $(CORE) $(FN)
+
+check-symbols:
+	$(PY) tools/check_symbols.py $(IMG) --ver $(VER)
+
+FROM ?= v1.3.0
+port:
+	$(PY) tools/port_symbols.py --from $(FROM) --to $(TO)
