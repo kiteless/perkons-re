@@ -9,8 +9,10 @@ Generated headers (in <build>/gen/):
 The firmware interface headers in include/<core>/ (fw_m7.h, fw_m4.h) are always on the
 include path.
 
-The cave has no startup code of its own, so the link fails if anything lands in
-.data or .bss. Patch state lives at fixed RAM addresses chosen in the C code.
+The cave has no startup code of its own, so the link fails if anything lands in .data.
+By default .bss is refused too and patch state lives at fixed RAM addresses chosen in the
+C code. With ram=(origin, length), .bss is placed there (NOLOAD) between __pk_bss_start
+and __pk_bss_end; the patch's boot code must zero it (the M4 host does, see m4host.py).
 """
 import os
 import re
@@ -39,6 +41,19 @@ SECTIONS {{
 }}
 ASSERT(SIZEOF(.data) == 0, "patch code must not use initialized globals (no startup code in the cave)")
 ASSERT(SIZEOF(.bss) == 0, "patch code must not use zero-init globals; use fixed RAM via pointers")
+"""
+
+LINKER_SCRIPT_RAM = """
+MEMORY {{ CAVE (rx) : ORIGIN = 0x{origin:08x}, LENGTH = 0x{length:x}
+         PKRAM (rw) : ORIGIN = 0x{ram_origin:08x}, LENGTH = 0x{ram_length:x} }}
+ENTRY({entry})
+SECTIONS {{
+  .text : {{ KEEP(*(.text.pk*)) *(.text*) *(.rodata*) }} > CAVE
+  .data : {{ *(.data*) }} > CAVE
+  .bss (NOLOAD) : ALIGN(4) {{ __pk_bss_start = .; *(.bss*) *(COMMON) . = ALIGN(4); __pk_bss_end = .; }} > PKRAM
+  /DISCARD/ : {{ *(.ARM.*) *(.comment) *(.note*) }}
+}}
+ASSERT(SIZEOF(.data) == 0, "patch code must not use initialized globals (no startup code in the cave)")
 """
 
 
@@ -76,18 +91,25 @@ def gen_syms_header(sym):
 
 
 def build(core, src_files, include_dirs, build_dir, origin, entry, sym, extra_headers=None, defines=None,
-          max_len=0x10000):
+          max_len=0x10000, ram=None, extra_sources=None):
     """Compile+link for `core` ('m4'/'m7') at `origin`. Writes gen/fw_syms.h plus any
-    extra_headers {name: text}. Returns (blob, {symbol: addr})."""
+    extra_headers {name: text} and extra_sources {name: text} (compiled too).
+    ram=(origin, length) places .bss there. Returns (blob, {symbol: addr}); the symbols
+    include .bss variables when ram is given."""
     gen = os.path.join(build_dir, 'gen')
     os.makedirs(gen, exist_ok=True)
     headers = {'fw_syms.h': gen_syms_header(sym), **(extra_headers or {})}
-    for name, text in headers.items():
+    for name, text in {**headers, **(extra_sources or {})}.items():
         with open(os.path.join(gen, name), 'w') as f:
             f.write(text)
+    src_files = list(src_files) + [os.path.join(gen, n) for n in (extra_sources or {})]
     ld = os.path.join(build_dir, 'cave.ld')
     with open(ld, 'w') as f:
-        f.write(LINKER_SCRIPT.format(origin=origin, length=max_len, entry=entry))
+        if ram:
+            f.write(LINKER_SCRIPT_RAM.format(origin=origin, length=max_len, entry=entry,
+                                             ram_origin=ram[0], ram_length=ram[1]))
+        else:
+            f.write(LINKER_SCRIPT.format(origin=origin, length=max_len, entry=entry))
     elf = os.path.join(build_dir, 'cave.elf')
     cmd = [tool('gcc'), *CPU_FLAGS[core], *CFLAGS, f'-I{gen}', *[f'-I{d}' for d in include_dirs],
            f'-I{FW_INCLUDE[core]}',
@@ -102,7 +124,7 @@ def build(core, src_files, include_dirs, build_dir, origin, entry, sym, extra_he
     syms = {}
     for line in out.splitlines():
         parts = line.split()
-        if len(parts) == 3 and parts[1] in 'Tt':
+        if len(parts) == 3 and parts[1] in ('TtBb' if ram else 'Tt'):
             syms[parts[2]] = int(parts[0], 16)
     with open(os.path.join(build_dir, 'cave.lst'), 'w') as f:
         f.write(subprocess.run([tool('objdump'), '-d', elf], capture_output=True, text=True).stdout)

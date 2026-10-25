@@ -41,6 +41,7 @@ def build_image(base, out_path, specs, symbols_m7, build_dir=None, extra_kwargs=
         print(f'[{mod.RISK:>6}] {spec}: {mod.SUMMARY}')
         kw = (extra_kwargs or {}).get(name, {})
         mod.apply(p, arg, **kw) if arg else mod.apply(p, **kw)
+    p.finish()
     print(p.report())
     p.result().save(out_path)
     chk = Image.load(out_path)

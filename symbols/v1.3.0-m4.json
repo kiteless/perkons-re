@@ -61,6 +61,7 @@
     "pot_value": "0x08108f98",
     "set_led": "0x08109414",
     "fx_lfo": "0x0810463c",
+    "fx_lfo_led_pwm": "0x08107dc0",
     "cfg_event": "0x08106240",
     "cfg_key": "0x08106260",
     "cfg_render": "0x08106010",
@@ -161,6 +162,11 @@
       "word": "0x08104841",
       "_note": "pointer installed for normal (non-test) mode"
     },
+    "fx_lfo.call_led_pwm": {
+      "addr": "0x081046b4",
+      "call": "fx_lfo_led_pwm",
+      "_note": "LFO LED brightness: timer compare (CCR1) = 0x7fff - LFO sample, once per FX block"
+    },
     "fx_update.call_read_switch": {
       "addr": "0x08104b88",
       "call": "hal_gpio_read",
@@ -208,7 +214,9 @@
     "input history": "0x24",
     "phase": "0x44",
     "vintage (u8)": "0x48",
-    "filter coeffs": "0x54..0x78",
+    "filter coeffs": "0x54..0x78 (except the two filter states)",
+    "filter state a": "0x60",
+    "filter state b": "0x78",
     "feedback": "0x7c",
     "last output": "0x80"
   },
@@ -228,6 +236,10 @@
     "fx_bbd.stages": "0xc",
     "fx_bbd.ticks": "0x1c",
     "fx_bbd.feedback": "0x7c",
+    "fx_bbd.history": "0x24",
+    "fx_bbd.state_a": "0x60",
+    "fx_bbd.state_b": "0x78",
+    "fx_bbd.last_out": "0x80",
     "fx_lfo.rate": "0x4",
     "fx_lfo.depth": "0x8",
     "device_config.bbd_sync": "0xd",

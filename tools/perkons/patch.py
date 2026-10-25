@@ -39,6 +39,7 @@ class Patcher:
         self.changes: List[Change] = []
         self._data = {s.name: bytearray(s.data) for s in img.segments}
         self._orig_len = {s.name: len(s.data) for s in img.segments}
+        self._finishers = []
 
     # -- primitives ------------------------------------------------------------------
     def _seg(self, name):
@@ -115,8 +116,19 @@ class Patcher:
         s = self._seg(seg)
         return (s.addr + len(self._data[seg]) + align - 1) & ~(align - 1)
 
+    # -- deferred steps --------------------------------------------------------------
+    def on_finish(self, fn):
+        """Run fn() once, after every patch has been applied (e.g. a shared build that
+        several patches register into, like the M4 host)."""
+        self._finishers.append(fn)
+
+    def finish(self):
+        while self._finishers:
+            self._finishers.pop(0)()
+
     # -- output ----------------------------------------------------------------------
     def result(self) -> Image:
+        self.finish()
         out = Image(product=self.img.product, field2=self.img.field2, major=self.img.major,
                     minor=self.img.minor, patch=self.img.patch, git=self.img.git)
         for s in self.img.segments:

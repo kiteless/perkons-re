@@ -36,6 +36,7 @@ typedef struct {
 /* --- FX (BBD) path; see docs/architecture.md "FX / BBD" ---------------------------- */
 typedef void (*fw_fx_proc_t)(const int16_t *in, int16_t *out);   /* 16 stereo frames, L used */
 #define fw_fx_bbd_process   FW_CALL(SYM_fx_bbd_process, fw_fx_proc_t)
+#define fw_fx_lfo_led_pwm   FW_CALL(SYM_fx_lfo_led_pwm, void (*)(uint32_t pwm))   /* LFO LED, 0..0xffff */
 #define fw_gpio_read        FW_CALL(SYM_hal_gpio_read, int (*)(void *port, uint16_t pin))
 #define fw_set_led          FW_CALL(SYM_set_led, void (*)(int key, int level))
 #define fw_cfg_event        FW_CALL(SYM_cfg_event, int (*)(const uint8_t *evt))
@@ -55,6 +56,17 @@ typedef void (*fw_fx_proc_t)(const int16_t *in, int16_t *out);   /* 16 stereo fr
 #define FW_BBD_STAGES       FW_U32(SYM_fx_bbd_state + OFF_fx_bbd_stages)
 #define FW_BBD_TICKS        FW_F32(SYM_fx_bbd_state + OFF_fx_bbd_ticks)    /* BBD clock ticks per sample */
 #define FW_BBD_LINE         ((float *)(uintptr_t)SYM_fx_bbd_line)          /* 16 KB */
+
+/* zero the BBD's signal state (input history, filter states, last output), leaving its
+ * settings; with the line cleared too, the delay restarts silent (as after fx_init) */
+static inline void fw_fx_bbd_clear_state(void)
+{
+    for (uint32_t o = OFF_fx_bbd_history; o < OFF_fx_bbd_history + 0x20; o += 4)
+        FW_F32(SYM_fx_bbd_state + o) = 0.0f;
+    FW_F32(SYM_fx_bbd_state + OFF_fx_bbd_state_a) = 0.0f;
+    FW_F32(SYM_fx_bbd_state + OFF_fx_bbd_state_b) = 0.0f;
+    FW_F32(SYM_fx_bbd_state + OFF_fx_bbd_last_out) = 0.0f;
+}
 #define FW_SYNC_ON          FW_U8(SYM_device_config + OFF_device_config_bbd_sync)
 #define FW_CLOCK_BPM        FW_F32(SYM_clock_state + OFF_clock_bpm)
 #define FW_SYNC_TABLE       ((const float *)(uintptr_t)SYM_fx_sync_table)  /* 17 beat multipliers */

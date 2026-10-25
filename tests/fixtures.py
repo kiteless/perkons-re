@@ -32,3 +32,17 @@ def require_image(version):
     if p is None:
         raise unittest.SkipTest(f'official {IMAGES[version]} not found (put it in the repo root or firmware/)')
     return p
+
+
+def build_patched(stock, names, build_dir):
+    """Apply patch modules `names` (this repo or PERKONS_MODS) to the v1.3.0 image `stock`.
+    Returns (Image, Patcher)."""
+    from perkons.emu import Symbols
+    from perkons.mods import load_patch
+    from perkons.patch import Patcher
+    p = Patcher(stock)
+    p.symbols = {'m7': Symbols(SYMBOLS_V130), 'm4': Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))}
+    p.build_dir = build_dir
+    for name in names:
+        load_patch(name).apply(p)
+    return p.result(), p
