@@ -49,9 +49,10 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 #mods li { margin: 0 0 20px; }
 #mods label { display: block; cursor: pointer; padding: 4px; }
 #mods label:focus-within { outline: 4px solid var(--white); }
+#mods .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 #mods .name { color: var(--white); }
-#mods .meta { color: var(--cyan); margin-top: 4px; }
-#mods .sum { color: var(--lightgrey); margin-top: 4px; }
+#mods .req { color: var(--cyan); margin-left: auto; }
+#mods .sum { color: var(--lightgrey); margin-top: 16px; }   /* one blank text line */
 #mods li.off .pix { color: var(--grey); }
 #mods li.off label { cursor: not-allowed; }
 

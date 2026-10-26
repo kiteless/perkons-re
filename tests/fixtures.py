@@ -35,14 +35,16 @@ def require_image(version):
 
 
 def build_patched(stock, names, build_dir):
-    """Apply patch modules `names` (this repo or PERKONS_MODS) to the v1.3.0 image `stock`.
-    Returns (Image, Patcher)."""
+    """Apply patch specs `names` ('name' or 'name:arg', this repo or PERKONS_MODS) to the
+    v1.3.0 image `stock`. Returns (Image, Patcher)."""
     from perkons.emu import Symbols
     from perkons.mods import load_patch
     from perkons.patch import Patcher
     p = Patcher(stock)
     p.symbols = {'m7': Symbols(SYMBOLS_V130), 'm4': Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))}
     p.build_dir = build_dir
-    for name in names:
-        load_patch(name).apply(p)
+    for spec in names:
+        name, _, arg = spec.partition(':')
+        mod = load_patch(name)
+        mod.apply(p, arg) if arg else mod.apply(p)
     return p.result(), p

@@ -21,6 +21,8 @@ OPTIONS = {'options': [
      'status': 'test'},
     {'id': 'any', 'title': 'STAMP', 'summary': 'Stamp only.', 'patches': ['version_stamp:x'], 'code': 'st',
      'conflicts': ['tag']},
+    {'id': 'needs', 'title': 'NEEDS TAG', 'summary': 'Needs the tag option.', 'patches': ['tag_build'],
+     'code': 'nt', 'requires': ['tag']},
 ]}
 
 
@@ -76,6 +78,9 @@ class TestModMatrix(unittest.TestCase):
             catalog.check_selection(['tag'], '1.2.2')                  # wrong version
         with self.assertRaises(catalog.CatalogError):
             catalog.check_selection(['tag', 'any'], '1.3.0')           # declared conflict
+        with self.assertRaises(catalog.CatalogError):
+            catalog.check_selection(['needs'], '1.3.0')                # missing requirement
+        catalog.check_selection(['needs', 'tag'], '1.3.0')
         _, specs = catalog.check_selection(['tag'], '1.3.0')
         self.assertEqual(specs, ['tag_build'])
 

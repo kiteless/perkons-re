@@ -40,6 +40,9 @@ class Patcher:
         self._data = {s.name: bytearray(s.data) for s in img.segments}
         self._orig_len = {s.name: len(s.data) for s in img.segments}
         self._finishers = []
+        # patches that cooperate register with each other here, by agreed keys (e.g. a
+        # mod offering extra engines to another mod), without importing each other
+        self.shared = {}
 
     # -- primitives ------------------------------------------------------------------
     def _seg(self, name):

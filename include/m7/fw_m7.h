@@ -42,6 +42,8 @@ struct cVoice {                 /* C++ object: vptr first; other fields via OFF_
 #define fw_sample_load_b    FW_CALL(SYM_cSamplePlayer_load_b, void (*)(void *))
 #define fw_sampler_render   FW_CALL(SYM_cSamplePlayer_render, int16_t (*)(void *))
 #define fw_crush_render     FW_CALL(SYM_cNoiseCrush_render, int16_t (*)(void *))
+#define fw_tick_mute_fade   FW_CALL(SYM_cVoice_tick_mute_fade, void (*)(cVoice *))  /* per sample, as slot renders do */
+#define FW_PARAM_PTRS_OFF   OFF_cVoice_param_ptrs                /* int *param[4] */
 
 /* Function-static state inside engine render functions. Stock firmware has one instance
  * of each engine, so these act as per-instance state. Code that runs more than one

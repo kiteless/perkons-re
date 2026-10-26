@@ -277,6 +277,19 @@ function clashes(o) {
   return o.conflicts.filter((c) => state.chosen.has(c));
 }
 
+/* ticking an option ticks what it requires; unticking one unticks what requires it */
+function select(id) {
+  if (state.chosen.has(id)) return;
+  state.chosen.add(id);
+  const o = state.options.find((x) => x.id === id);
+  for (const r of (o && o.requires) || []) select(r);
+}
+
+function deselect(id) {
+  if (!state.chosen.delete(id)) return;
+  for (const o of state.options) if ((o.requires || []).includes(id)) deselect(o.id);
+}
+
 function renderMods() {
   const ul = $("mods");
   ul.textContent = "";
@@ -294,14 +307,16 @@ function renderMods() {
     box.checked = state.chosen.has(o.id);
     box.disabled = !ok || state.building;
     box.addEventListener("change", () => {
-      if (box.checked) state.chosen.add(o.id); else state.chosen.delete(o.id);
+      if (box.checked) select(o.id); else deselect(o.id);
       renderMods();
       updateSlop();
     });
-    const name = pix("p", "name", `[${box.checked ? "X" : " "}] ${o.title}`);
-    const meta = pix("p", "meta", `RISK ${o.risk.toUpperCase()}   ${o.status.toUpperCase()}   NEEDS ${o.target || "ANY"}`);
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(pix("p", "name", `[${box.checked ? "X" : " "}] ${o.title}`, { nowrap: "1" }),
+      pix("p", "req", `REQUIRES ${o.target || "ANY FIRMWARE"}`, { nowrap: "1" }));
     const sum = pix("p", "sum", o.summary.toUpperCase());
-    label.append(box, name, meta, sum);
+    label.append(box, row, sum);
     if (state.info && o.target && o.target !== state.info.version) {
       label.append(pix("p", "err", `NOT AVAILABLE FOR ${state.info.version}`));
     }

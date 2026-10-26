@@ -33,6 +33,7 @@ with checkboxes and build from your own official image.
 | `docs/architecture.md` | what the firmware looks like inside (both cores, IPC, voice engine, banks/JSON, FX) |
 | `docs/process.md` | the RE → patch → emulate → hardware workflow; flashing, recovery and safety |
 | `docs/porting.md` | moving mods to a new official firmware: symbol porter, probes, checks, rehearsal results |
+| `docs/writing-mods.md` | making a new mod, step by step |
 
 ## Setup
 
@@ -63,6 +64,9 @@ make build PATCHES=example_hook               # builds/example_hook.img + regres
 ```
 
 ## Writing a mod
+
+Step by step, from RE to Mod Matrix to hardware: **[docs/writing-mods.md](docs/writing-mods.md)**.
+The short version:
 
 Start from `patches/example_hook.py` + `patches/src/m7/example_hook.c`. A patch module
 declares `TARGET` (firmware version, or `None` for any), `SUMMARY`, `RISK` and

@@ -12,7 +12,8 @@ A mod lists its options in <mod>/mod.json (mods without one are not offered):
           "patches": ["fx_reverb"],          patch specs, as for `make build`
           "code": "rv",                      2 letters for the build tag (INFO.TXT)
           "status": "emulator-tested",       free text shown to the user
-          "conflicts": []                    option ids that can't be combined (optional)
+          "conflicts": [],                   option ids that can't be combined (optional)
+          "requires": []                     option ids it needs in the same build (optional)
         }
       ]
     }
@@ -58,7 +59,8 @@ def options():
                 raise CatalogError(f'option {o["id"]}: patches target different versions {targets}')
             out.append({'id': o['id'], 'title': o['title'], 'summary': o['summary'],
                         'patches': list(o['patches']), 'code': o['code'], 'status': o.get('status', ''),
-                        'conflicts': list(o.get('conflicts', [])), 'mod': os.path.basename(d),
+                        'conflicts': list(o.get('conflicts', [])), 'requires': list(o.get('requires', [])),
+                        'mod': os.path.basename(d),
                         'target': targets.pop()[1:] if targets else None, 'risk': risk})
     return out
 
@@ -108,6 +110,9 @@ def check_selection(ids, version):
         clash = set(o['conflicts']) & set(ids)
         if clash:
             raise CatalogError(f'{o["title"]} can\'t be combined with {", ".join(sorted(clash))}')
+        missing = set(o['requires']) - set(ids)
+        if missing:
+            raise CatalogError(f'{o["title"]} needs {", ".join(sorted(missing))} too')
     specs = [p for o in chosen for p in o['patches']]
     return chosen, specs
 
