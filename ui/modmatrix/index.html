@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perkons Mod Matrix</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="intro" role="presentation" aria-hidden="true"><canvas id="intro-canvas"></canvas></div>
+
+<div id="app" hidden>
+  <header id="banner"><canvas id="scroller" aria-hidden="true"></canvas>
+    <h1 class="sr">Perkons Mod Matrix</h1></header>
+
+  <main id="screen">
+    <p class="pix title" data-align="center">**** PERKONS MOD MATRIX V1 ****</p>
+    <p class="pix dim" data-align="center">BUILD MODDED FIRMWARE FROM YOUR OWN OFFICIAL IMAGE</p>
+
+    <section id="s1" class="step">
+      <h2 class="pix head">1. LOAD FIRMWARE</h2>
+      <label id="drop" class="drop" tabindex="0">
+        <input id="file" type="file" accept=".img" class="sr">
+        <span class="pix">DROP YOUR OFFICIAL PERKONS .IMG HERE OR CLICK TO BROWSE</span>
+      </label>
+      <p id="fw" class="pix dim" aria-live="polite">NO FIRMWARE LOADED.</p>
+    </section>
+
+    <section id="s2" class="step locked" aria-disabled="true">
+      <h2 class="pix head">2. CHOOSE YOUR MODS</h2>
+      <ul id="mods"></ul>
+    </section>
+
+    <section id="s3" class="step locked" aria-disabled="true">
+      <h2 class="pix head">3. BUILD</h2>
+      <button id="slop" class="slop" disabled><span class="pix" data-nowrap="1" data-scale="4">SLOP IT UP</span></button>
+      <div id="log" class="log" aria-live="polite"></div>
+      <a id="dl" class="dl" hidden><span class="pix" data-nowrap="1">DOWNLOAD</span></a>
+      <p id="howto" class="pix dim" hidden>COPY IT TO THE ROOT OF THE SD CARD UNDER THAT NAME AND POWER ON. THE UNIT FLASHES ITSELF. TO GO BACK, DO THE SAME WITH THE OFFICIAL IMAGE.</p>
+    </section>
+  </main>
+
+  <section id="disclaimer">
+    <p class="pix warn">DISCLAIMER</p>
+    <p class="pix">UNOFFICIAL. NOT AFFILIATED WITH OR ENDORSED BY ERICA SYNTHS. MODDED FIRMWARE IS FLASHED ENTIRELY AT YOUR OWN RISK: THE AUTHOR IS NOT RESPONSIBLE FOR BRICKED DEVICES, LOST SAMPLES OR SETTINGS, A VOIDED WARRANTY OR ANY OTHER DAMAGE. KEEP THE OFFICIAL FIRMWARE AND REFLASH IT BEFORE ANY SERVICE. A BUILT IMAGE CONTAINS ERICA SYNTHS' FIRMWARE: IT IS FOR YOUR OWN DEVICE ONLY, DON'T SHARE IT. EVERYTHING RUNS ON THIS COMPUTER; NOTHING IS UPLOADED ANYWHERE.</p>
+  </section>
+
+  <footer id="eqbox"><canvas id="eq" aria-hidden="true"></canvas></footer>
+</div>
+
+<script src="font.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "_comment": "SHA-256 of official Erica Synths firmware images as downloaded (the images are not in this repo). Used by the Mod Matrix to recognise an unmodified base.",
+  "91ea7a1d07c91372a7176c521a1ea8ccc53b660f31026c9f4dfbade254280ddf": {"version": "1.3.0", "file": "perkons_v1.3.0-0-force.img"},
+  "0869337697fc79a04a3518a09d6d724a651b1bf711f09a711ea0d0686c61c21d": {"version": "1.2.2", "file": "perkons_both_v1.2.2-0-g243b10f_force.img"},
+  "adcdbc4a2c660ffb6477f202211ae3cb70170bfe6ddfaecc3df0e4cb7db398c6": {"version": "1.2.1", "file": "perkons_both_v1.2.1-0-gbcccfd0.img"},
+  "376e5a3650209dccf66c2e7ebb6fe8aeb6521032aaa69e7606269d369c7886d3": {"version": "1.1.1", "file": "perkons_both_v1.1.1-0-g8447464.img"}
+}

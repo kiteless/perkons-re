@@ -13,7 +13,7 @@ space   := $(subst ,, )
 -include local.mk
 export PERKONS_MODS
 
-.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile check-symbols port
+.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile check-symbols port ui
 
 help:
 	@echo "make setup                          create .venv and install pinned deps"
@@ -24,6 +24,7 @@ help:
 	@echo "make unpack                         unpack \$$(IMG) to firmware/unpacked/\$$(VER)"
 	@echo "make render                         render all stock voices of \$$(IMG) to \$$(OUT)/stock"
 	@echo "make build PATCHES='a b:arg'        build builds/<patches>.img + emulator regression"
+	@echo "make ui                             Mod Matrix: build modded firmware in the browser"
 	@echo "make release REL=path/to/rel.json   versioned release folder (see tools/release.py)"
 	@echo "make ghidra VER=v1.3.0              import + analyze both cores into ghidra/projects/"
 	@echo "make check-symbols VER=v1.3.0       behavioural checks of symbols/<VER>-*.json"
@@ -80,3 +81,6 @@ check-symbols:
 FROM ?= v1.3.0
 port:
 	$(PY) tools/port_symbols.py --from $(FROM) --to $(TO)
+
+ui:
+	$(PY) tools/modmatrix.py $(UI_ARGS)

@@ -1,0 +1,82 @@
+/* Perkons Mod Matrix. Colours are the 16 of the 8-bit palette (see C64 in font.js). */
+:root {
+  --black: #000; --white: #fff; --blue: #352879; --lightblue: #6c5eb5; --cyan: #70a4b2;
+  --yellow: #b8c76f; --lightgreen: #9ad284; --lightred: #9a6759; --grey: #6c6c6c;
+  --darkgrey: #444; --lightgrey: #959595; --red: #68372b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--black); color: var(--lightblue); }
+body { min-height: 100vh; overflow-x: hidden; }
+canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* intro: loader screen, fills the window */
+#intro { position: fixed; inset: 0; z-index: 10; background: var(--lightblue); cursor: pointer; }
+#intro canvas { width: 100%; height: 100%; }
+
+/* banner */
+#banner { background: var(--black); }
+#scroller { width: 100%; height: 150px; }
+
+/* the blue "screen" with the light-blue border */
+#screen {
+  max-width: 980px; margin: 24px auto; padding: 24px;
+  background: var(--blue); border: 24px solid var(--lightblue);
+}
+@media (max-width: 600px) { #screen { margin: 12px 8px; padding: 12px; border-width: 12px; } }
+
+.pix { margin: 0; color: var(--lightblue); }
+.pix canvas { max-width: 100%; }
+.title { color: var(--white); margin-bottom: 8px; }
+.dim { color: var(--lightgrey); }
+.head { color: var(--white); margin-bottom: 12px; }
+.warn { color: var(--lightred); margin-bottom: 8px; }
+.ok { color: var(--lightgreen); }
+.err { color: var(--lightred); }
+
+.step { margin-top: 32px; }
+.step.locked .pix, .step.locked .pix.head { color: var(--grey); }
+.step.locked { pointer-events: none; }
+
+.drop {
+  display: block; padding: 24px 16px; margin-bottom: 12px; cursor: pointer;
+  border: 4px dashed var(--lightblue); background: var(--blue);
+}
+.drop:hover, .drop:focus-visible, .drop.over { background: var(--lightblue); outline: none; }
+.drop:hover .pix, .drop:focus-visible .pix, .drop.over .pix { color: var(--blue); }
+
+#mods { list-style: none; margin: 0; padding: 0; }
+#mods li { margin: 0 0 20px; }
+#mods label { display: block; cursor: pointer; padding: 4px; }
+#mods label:focus-within { outline: 4px solid var(--white); }
+#mods .name { color: var(--white); }
+#mods .meta { color: var(--cyan); margin-top: 4px; }
+#mods .sum { color: var(--lightgrey); margin-top: 4px; }
+#mods li.off .pix { color: var(--grey); }
+#mods li.off label { cursor: not-allowed; }
+
+.slop {
+  display: inline-block; padding: 16px 24px; border: 0; cursor: pointer;
+  background: var(--lightblue); font: inherit;
+}
+.slop .pix { color: var(--blue); }
+.slop:hover:not(:disabled), .slop:focus-visible { background: var(--white); outline: none; }
+.slop:disabled { background: var(--darkgrey); cursor: not-allowed; }
+.slop:disabled .pix { color: var(--grey); }
+.slop.busy { background: var(--yellow); }
+
+.log { margin-top: 20px; min-height: 16px; }
+.log .pix { color: var(--lightblue); }
+.log .pix.err { color: var(--lightred); }
+.log .pix.ok { color: var(--lightgreen); }
+
+.dl { display: inline-block; margin: 20px 0 12px; padding: 12px 16px; background: var(--lightgreen); cursor: pointer; }
+.dl[hidden] { display: none; }
+.dl .pix { color: var(--black); }
+.dl:hover, .dl:focus-visible { background: var(--white); outline: none; }
+
+#disclaimer { max-width: 980px; margin: 0 auto 24px; padding: 0 24px; }
+#disclaimer .pix:not(.warn) { color: var(--grey); }
+
+#eqbox { background: var(--black); }
+#eq { width: 100%; height: 140px; }
