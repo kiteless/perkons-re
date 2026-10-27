@@ -112,10 +112,11 @@ and patch RAM today; a second RAM-using M7 mod means building an M7 host first.
 
 ### A new voice engine: add it to voice-map
 
-A voice engine for any output is an extra voice-map engine (voices.json 5 and up), like
-`zibens`: a `cVoice`-compatible C object (the stock field offsets, a 4-method vtable)
-built in an output's arena by a `build(obj, out)` function your patch registers in
-`p.shared['voice_map']['engines'][N]`. Mark it `"requires": ["voice-map"]` in mod.json.
+A voice engine for any output is an extra voice-map engine, like `zibens`: a
+`cVoice`-compatible C object (the stock field offsets, a 4-method vtable) built in an
+output's arena by a `build(obj, out)` function your patch registers in
+`p.shared['voice_map']['engines'][N]` with a free engine number N (5-15) and a `name`;
+users select it by that name in `voices.json` (`"voice3": "my-engine"`). Mark it `"requires": ["voice-map"]` in mod.json.
 
 ### C rules (both cores)
 

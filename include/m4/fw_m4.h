@@ -20,6 +20,14 @@ typedef struct {
     uint32_t count;
 } fw_json_schema_t;
 
+/* FW_JSON_ENUM entries: enum_table points at one of these. The loader stores (u8) the
+ * index of the name that matches the JSON string exactly; any other value, including
+ * a number, stores 0. Keep index 0 for "unknown". */
+typedef struct {
+    const char *const *names;
+    uint32_t count;
+} fw_json_enum_t;
+
 #define FW_JSON_BOOL        0x80u
 #define FW_JSON_U8          0x81u   /* note: values are truncated to 8 bits */
 #define FW_JSON_ENUM        0x86u
