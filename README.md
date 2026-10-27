@@ -9,8 +9,97 @@ regression checks against stock.
 > own risk; read [docs/process.md](docs/process.md) first (flashing, recovery, safety).
 > No firmware binaries are distributed here: bring the official update files.
 
-**Just want modded firmware for your Pērkons?** See [Mod Matrix](#mod-matrix): pick mods
-with checkboxes and build from your own official image.
+**Just want modded firmware for your Pērkons?** Follow [Get modded firmware](#get-modded-firmware)
+below. No programming needed, and no firmware files come from here: you build your own
+from the official update.
+
+## Get modded firmware
+
+You pick the mods you want in the **Mod Matrix**, a small app that runs in your browser,
+on your own computer. It patches the official firmware you downloaded from Erica Synths
+and gives you a new firmware file to flash. Nothing is uploaded anywhere.
+
+### What you need
+
+* The official Pērkons firmware **1.3.0** from Erica Synths (the file is called
+  `perkons_v1.3.0-0-force.img`).
+* The Pērkons's SD card and a way to read it on your computer.
+* A Mac, Linux or Windows computer.
+
+### 1. Install three programs (once)
+
+| | macOS | Linux (Debian/Ubuntu) | Windows |
+|---|---|---|---|
+| **git** | `xcode-select --install` | `sudo apt install git` | [git-scm.com](https://git-scm.com/) |
+| **Python 3.9 or newer** | comes with the line above | `sudo apt install python3 python3-venv` | [python.org](https://www.python.org/downloads/): tick "Add python.exe to PATH" |
+| **Arm GCC** (builds the mods) | `brew install arm-none-eabi-gcc arm-none-eabi-binutils` ([Homebrew](https://brew.sh)) | `sudo apt install gcc-arm-none-eabi binutils-arm-none-eabi` | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads), the `arm-none-eabi` installer: tick "Add path to environment variable" |
+
+Type the commands into a terminal (macOS: Terminal; Linux: any terminal; Windows: use the
+installers, then open a new Command Prompt).
+
+### 2. Download this project (once)
+
+```sh
+git clone https://github.com/kiteless/perkons-re
+cd perkons-re
+```
+
+### 3. Start the Mod Matrix
+
+macOS / Linux:
+
+```sh
+python3 start_modmatrix.py
+```
+
+Windows:
+
+```bat
+py start_modmatrix.py
+```
+
+The first time, this sets things up for you: a private Python environment inside the
+`perkons-re` folder, and the mods, downloaded next to it into `perkons-re-mods`. Then
+the Mod Matrix opens in your browser at http://127.0.0.1:6464/. If something is
+missing, the script says what to install. To stop it, press Ctrl-C in the terminal.
+Next time, just run step 3 again (in the `perkons-re` folder).
+
+### 4. Build your firmware
+
+1. Drop the official `perkons_v1.3.0-0-force.img` on the page (or click to choose it). It
+   only accepts an unmodified official image.
+2. Tick the mods you want. Some need another mod; the page ticks it for you.
+3. Press **SLOP IT UP** and wait about a minute.
+4. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
+
+### 5. Flash it
+
+1. Copy the new `perkons_v1.3.0-0-force.img` to the **root of the SD card**. It must have
+   exactly that name and be the only `.img` file there: replace any old one (on a Mac, if
+   Finder asks, choose **Replace**, not "Keep Both").
+2. Put the card in the Pērkons. Power off, **hold all four voice trigger keys**, and power
+   on. Let go when the first row of steps starts lighting; rows light 1 → 3 → 2 → 4, then
+   the Pērkons starts.
+3. Check it worked: `INFO.TXT` on the card now shows a tag after the version, e.g.
+   `1.3.0 - mm-vmzb`. Plain `1.3.0 - gd5b5810` means the official firmware is still on it.
+
+### 6. Use the mods
+
+Each mod's page says how to use it:
+[voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
+[ZIBENS](https://github.com/kiteless/perkons-re-mods/tree/main/zibens),
+[fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
+[fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze).
+
+### Going back to the official firmware
+
+Flash the official `perkons_v1.3.0-0-force.img` the same way (step 5). Do this before
+any warranty service. More on flashing and recovery: [docs/process.md](docs/process.md).
+
+> A firmware file you build contains Erica Synths' firmware: it's for your own Pērkons,
+> please don't share it. Modified firmware is used at your own risk.
+
+# For developers
 
 ## What's here
 
@@ -24,6 +113,7 @@ with checkboxes and build from your own official image.
 | `tools/check_symbols.py` | behavioural checks of a symbols file (each symbol does what we think, in the emulator) |
 | `tools/port_symbols.py` | port symbols to another firmware version: matching + probes + checks + report |
 | `tools/run_tests.py` | framework tests + mod tests |
+| `start_modmatrix.py` | one-step setup + start of the Mod Matrix (see [Get modded firmware](#get-modded-firmware)) |
 | `tools/modmatrix.py`, `ui/modmatrix/` | **Mod Matrix**: pick mods with checkboxes, build modded firmware from your own official image in the browser |
 | `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `catalog` (Mod Matrix options and image checks) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
@@ -89,80 +179,12 @@ patches in either place. See `tools/perkons/mods.py`.
 
 ## Mod Matrix
 
-A local app for building modded firmware: drop in the official `.img` you downloaded from
-Erica Synths, tick the mods you want, press **SLOP IT UP**, and download the result. It
-runs in your browser, served from your own computer (127.0.0.1 only); nothing is
-uploaded anywhere.
-
-### 1. Install the prerequisites
-
-| | macOS | Linux (Debian/Ubuntu shown) | Windows |
-|---|---|---|---|
-| git | `xcode-select --install` | `sudo apt install git` | [git-scm.com](https://git-scm.com/) |
-| Python ≥ 3.9 | included with the above, or `brew install python` | `sudo apt install python3 python3-venv` | [python.org](https://www.python.org/downloads/) (tick "Add to PATH") |
-| Arm GCC (mods are compiled C) | `brew install arm-none-eabi-gcc arm-none-eabi-binutils` | `sudo apt install gcc-arm-none-eabi binutils-arm-none-eabi` | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) `arm-none-eabi` installer (tick "Add path to environment variable") |
-
-Ghidra is not needed; it's only for reverse-engineering.
-
-### 2. Get the framework and the mods, side by side
-
-```sh
-git clone https://github.com/kiteless/perkons-re
-git clone https://github.com/kiteless/perkons-re-mods
-cd perkons-re
-```
-
-### 3. Set up (once)
-
-macOS / Linux:
-
-```sh
-make setup                                          # .venv with the pinned Python packages
-echo 'PERKONS_MODS = ../perkons-re-mods' > local.mk  # where the mods are
-make tools-check                                    # Python packages and Arm GCC found?
-```
-
-Windows (Command Prompt, no `make` needed):
-
-```bat
-py -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-arm-none-eabi-gcc --version
-```
-
-### 4. Run it
-
-macOS / Linux:
-
-```sh
-make ui                         # opens http://127.0.0.1:6464/
-make ui UI_ARGS=--no-intro      # skip the loader intro
-```
-
-Windows:
-
-```bat
-set PERKONS_MODS=..\perkons-re-mods
-.venv\Scripts\python tools\modmatrix.py
-```
-
-Ctrl-C in the terminal stops it. Options: `--port N`, `--no-browser`, `--no-intro`.
-
-### 5. Build and flash
-
-1. Download the official firmware from Erica Synths (currently `perkons_v1.3.0-0-force.img`)
-   and drop it on the page. Only an unmodified official image of a supported version
-   unlocks the mods (it checks the header, the CRCs and the file's hash; see
-   `symbols/official-images.json`).
-2. Tick the mods. Each shows what it does and the firmware it needs.
-3. **SLOP IT UP.** The build takes about a minute, most of it the emulator check that
-   every voice still sounds exactly like stock.
-4. Download `perkons_v1.3.0-0-force.img`, copy it to the root of the SD card under that
-   name, and power on: the unit flashes itself. `INFO.TXT` on the card then shows the
-   build tag (`1.3.0 - mm-…`). To go back, do the same with the official image.
-
-Read [docs/process.md](docs/process.md) (flashing, recovery) before the first flash. A
-built image contains Erica Synths' firmware: it's for your own device, don't share it.
+`python3 start_modmatrix.py` (or `make ui`, `UI_ARGS=--no-intro` to skip the intro) runs
+`tools/modmatrix.py`: a Python standard-library server on 127.0.0.1 and a plain
+HTML/JS page in `ui/modmatrix/`. It reads only the image's header (version), CRCs and
+hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the build with
+`version_stamp` (`mm-<codes>`), and serves the result for download. Options: `--port N`,
+`--no-browser`, `--no-intro`.
 
 ### Adding a mod to it
 

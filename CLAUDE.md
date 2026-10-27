@@ -42,6 +42,7 @@ make test          # framework + all mods, ~5 min (emulator-heavy; a sleeping Ma
 make test-fast     # container + patcher only
 make build PATCHES='fx_reverb fx_freeze'   # builds/<name>.img + voice regression
 make ui            # Mod Matrix at http://127.0.0.1:6464/ (UI_ARGS=--no-intro)
+python3 start_modmatrix.py   # end users: sets up .venv, finds/clones the mods, starts the Mod Matrix
 make release REL=../perkons-re-mods/releases/<name>.json
 ghidra/query.sh v1.3.0 m4 <outname> addr:0x... | fn:0x... | 'str:...'
 ```
