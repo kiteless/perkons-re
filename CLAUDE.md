@@ -55,3 +55,5 @@ from Homebrew. Long runs: start them in the background and wait for the notifica
   (`EQ.source` hook in `ui/modmatrix/app.js`); Latvian letters (Ā Ē Ī Ū Č Š Ž Ķ Ļ Ņ Ģ)
   could be added to `font.js`. Linux/Windows untested.
 * Mod status and open hardware tests: see `../perkons-re-mods/CLAUDE.md`.
+* Flashing gotcha seen on hardware: check `INFO.TXT` after a flash (it shows the build's
+  `version_stamp` tag, not yet seen on hardware; `gd5b5810` means the official image was flashed).
