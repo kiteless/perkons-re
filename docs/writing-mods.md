@@ -53,7 +53,8 @@ perkons-re-mods/my-mod/
   src/m4/my_mod.c          C (src/m7/ for the M7)
   lib/                     Python helpers shared by patches and tests (optional)
   tests/test_my_mod.py     emulator tests, run by `make test`
-  docs/design.md           what it does, controls, RE findings, status
+  README.md                what it does and how to use it (for users)
+  docs/design.md           how it works, controls, RE findings
 ```
 
 `make test`, `make build` and `make ui` find it through `PERKONS_MODS` (in the
@@ -163,7 +164,6 @@ write WAVs to `out/` (gitignored) to listen before hardware.
       "summary": "What the user gets, in one or two sentences.",
       "patches": ["my_mod"],
       "code": "mm",
-      "status": "emulator-tested",
       "conflicts": [],
       "requires": []
     }
@@ -177,9 +177,7 @@ them along). Only list user-facing options; development patches stay out. `make 
 ## 7. Hardware
 
 Follow process.md: official firmware on the card as the way back, flash the build
-(`perkons_v1.3.0-0-force.img` in the SD root), test one thing at a time, log results in
-the mod's `docs/hardware-log.md`, then update `status` in `mod.json` and the table in the
-mods README.
+(`perkons_v1.3.0-0-force.img` in the SD root), one change at a time.
 
 ## 8. Release
 

@@ -23,6 +23,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -86,6 +87,9 @@ def main():
                          build_dir=os.path.join(out_dir, 'obj'),
                          extra_kwargs={'version_stamp': {'banner': rel.get('banner')}})
     bad = None if a.no_emu else regression(base, img, os.path.join(ROOT, 'symbols', f'{rel["base"]}-m7.json'))
+    if bad:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        sys.exit(f'{len(bad)} voice renders differ from stock: no release written (see the build log)')
 
     v = f'{base.major}.{base.minor}.{base.patch}'
     lines = [
@@ -102,7 +106,6 @@ def main():
     lines += [
         f'| image | `{os.path.basename(out)}` sha256 `{sha256(out)[:16]}…` |',
         f'| built | {datetime.date.today().isoformat()} |',
-        f'| emulator regression | {"skipped" if bad is None else ("all outputs identical to the stock engine they run" if not bad else f"{len(bad)} differences, see build log")} |',
         '', '## Install', '',
         f'1. Copy `{os.path.basename(out)}` to the root of the SD card (only one `.img` there).',
         '2. Power off, hold all four voice trigger keys, power on; release when row 1 starts lighting.',

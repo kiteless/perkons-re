@@ -11,7 +11,6 @@ A mod lists its options in <mod>/mod.json (mods without one are not offered):
           "summary": "One or two sentences for the user.",
           "patches": ["fx_reverb"],          patch specs, as for `make build`
           "code": "rv",                      2 letters for the build tag (INFO.TXT)
-          "status": "emulator-tested",       free text shown to the user
           "conflicts": [],                   option ids that can't be combined (optional)
           "requires": []                     option ids it needs in the same build (optional)
         }
@@ -58,7 +57,7 @@ def options():
             if len(targets) > 1:
                 raise CatalogError(f'option {o["id"]}: patches target different versions {targets}')
             out.append({'id': o['id'], 'title': o['title'], 'summary': o['summary'],
-                        'patches': list(o['patches']), 'code': o['code'], 'status': o.get('status', ''),
+                        'patches': list(o['patches']), 'code': o['code'],
                         'conflicts': list(o.get('conflicts', [])), 'requires': list(o.get('requires', [])),
                         'mod': os.path.basename(d),
                         'target': targets.pop()[1:] if targets else None, 'risk': risk})

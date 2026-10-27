@@ -15,6 +15,9 @@ untracked `local.mk` (`PERKONS_MODS = ../perkons-re-mods`).
   `builds/`, `out/` (renders), samples. Built images must not be shared (Erica's site T&C);
   hashes of official images are fine (`symbols/official-images.json`).
 * Both repos are **private**; don't make them public unless asked.
+* **No testing details in anything pushed**: docs, READMEs, mod.json, commit messages and
+  release notes never say how or whether something was tested (no status fields, hardware
+  logs, "verified" notes, test counts). Pushed means tested.
 * **This repo holds no mod specifics**: mod code goes in perkons-re-mods.
 * Cautious phases: emulator first, hardware last, one small change per hardware step;
   reflash official firmware before any warranty service.
@@ -53,7 +56,7 @@ from Homebrew. Long runs: start them in the background and wait for the notifica
   (needs install approval), packaged app (PyInstaller), shipping pre-compiled mod code so
   users need no compiler; equaliser to be driven by a MOD file the owner will supply
   (`EQ.source` hook in `ui/modmatrix/app.js`); Latvian letters (Ā Ē Ī Ū Č Š Ž Ķ Ļ Ņ Ģ)
-  could be added to `font.js`. Linux/Windows untested.
-* Mod status and open hardware tests: see `../perkons-re-mods/CLAUDE.md`.
-* Flashing gotcha seen on hardware: check `INFO.TXT` after a flash (it shows the build's
-  `version_stamp` tag, not yet seen on hardware; `gd5b5810` means the official image was flashed).
+  could be added to `font.js`.
+* Mods overview: see `../perkons-re-mods/CLAUDE.md`.
+* After flashing, `INFO.TXT` on the card shows the build's `version_stamp` tag
+  (`gd5b5810` = the official image).

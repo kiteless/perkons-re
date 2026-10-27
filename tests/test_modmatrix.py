@@ -17,8 +17,7 @@ from perkons.fwimage import Image
 import modmatrix
 
 OPTIONS = {'options': [
-    {'id': 'tag', 'title': 'TAG BUILD', 'summary': 'Banner tag only.', 'patches': ['tag_build'], 'code': 'tg',
-     'status': 'test'},
+    {'id': 'tag', 'title': 'TAG BUILD', 'summary': 'Banner tag only.', 'patches': ['tag_build'], 'code': 'tg'},
     {'id': 'any', 'title': 'STAMP', 'summary': 'Stamp only.', 'patches': ['version_stamp:x'], 'code': 'st',
      'conflicts': ['tag']},
     {'id': 'needs', 'title': 'NEEDS TAG', 'summary': 'Needs the tag option.', 'patches': ['tag_build'],

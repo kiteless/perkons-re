@@ -154,7 +154,7 @@ Ctrl-C in the terminal stops it. Options: `--port N`, `--no-browser`, `--no-intr
    and drop it on the page. Only an unmodified official image of a supported version
    unlocks the mods (it checks the header, the CRCs and the file's hash; see
    `symbols/official-images.json`).
-2. Tick the mods. Each shows its risk, how it's been tested and the firmware it needs.
+2. Tick the mods. Each shows what it does and the firmware it needs.
 3. **SLOP IT UP.** The build takes about a minute, most of it the emulator check that
    every voice still sounds exactly like stock.
 4. Download `perkons_v1.3.0-0-force.img`, copy it to the root of the SD card under that
@@ -163,12 +163,11 @@ Ctrl-C in the terminal stops it. Options: `--port N`, `--no-browser`, `--no-intr
 
 Read [docs/process.md](docs/process.md) (flashing, recovery) before the first flash. A
 built image contains Erica Synths' firmware: it's for your own device, don't share it.
-Tested on macOS so far; Linux and Windows are expected to work but are untested.
 
 ### Adding a mod to it
 
 Mods appear through a `mod.json` in the mod folder (see `tools/perkons/catalog.py`):
-title, summary, the patch specs, a two-letter code for the build tag, status, and optional
+title, summary, the patch specs, a two-letter code for the build tag, and optional
 `conflicts` (option ids that can't be combined). Target version and risk come from the
 patch modules. Mods without a `mod.json` (and development patches not listed in one)
 aren't offered.
