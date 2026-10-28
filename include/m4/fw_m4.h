@@ -38,6 +38,12 @@ typedef struct {
 #define fw_json_save        FW_CALL(SYM_json_save, int (*)(const char *path, const fw_json_schema_t *, const void *))
 #define fw_device_json_save FW_CALL(SYM_device_json_save, void (*)(void))   /* system/device.json */
 #define fw_file_exists      FW_CALL(SYM_file_exists, int (*)(const char *path))
+/* FatFs (R0.1x): f_open mode FA_WRITE | FA_CREATE_ALWAYS = 0x0a, as json_save. The
+ * firmware's own file object (SYM_json_file) is free between its file operations. */
+#define fw_f_open           FW_CALL(SYM_f_open, int (*)(void *fil, const char *path, uint8_t mode))
+#define fw_f_write          FW_CALL(SYM_f_write, int (*)(void *fil, const void *buf, unsigned n, unsigned *written))
+#define fw_f_close          FW_CALL(SYM_f_close, int (*)(void *fil))
+#define FW_FA_WRITE_NEW     0x0au
 #define fw_snprintf         FW_CALL(SYM_snprintf, int (*)(char *, unsigned, const char *, ...))
 #define fw_ipc_send         FW_CALL(SYM_ipc_send, int (*)(int stream, const void *, int len, int type))
 

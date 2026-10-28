@@ -12,6 +12,7 @@ once, so instead of patching them, a mod registers with the host from its apply(
         h.toggle(46, 'my-feature', 'pk_cfg_my_feature')   # config key, mods.json key, uint8_t var
         h.fx()                                              # take over the FX process function
         h.redirect_call('some_fn.call_site', 'pk_my_hook', 'why')   # resolved after the link
+        h.add([...], on_save='pk_my_save')                 # run whenever the settings are saved
 
 When every patch is applied (Patcher.finish / result), the host compiles all registered
 sources with its own (src/m4/host/) in one link, appends the code, and patches each
@@ -21,7 +22,8 @@ through the weak hooks in include/m4/pk_host.h. p.cave_symbols['m4host'] gets th
 symbols (functions and .bss variables).
 
 RAM: .bss goes in the D2 SRAM gap between the newlib heap and the M7's audio DMA buffer
-(0x10040000); the heap is capped below it by patching _sbrk's limit.
+(0x10040000); the heap is capped below it by patching _sbrk's limit. axi_gap() gives the
+AXI SRAM that no firmware code references (being mapped; not used by the host yet).
 """
 import os
 
@@ -39,6 +41,14 @@ class HostError(Exception):
     pass
 
 
+def axi_gap(sym, margin=0x100):
+    """(start, end) of the AXI SRAM between the M4's last object (the JSON buffer) and the
+    sample table, which no firmware code references; `margin` kept clear at each end."""
+    lo = sym.g['json_buf'] + sym.const['json_buf_size'] + margin
+    hi = sym.g['sample_table'] - margin
+    return (lo + 0xff) & ~0xff, hi & ~0xff
+
+
 def host(p):
     """The patcher's M4 host, created (and scheduled to build) on first use."""
     h = getattr(p, 'm4host', None)
@@ -51,20 +61,29 @@ def host(p):
 class Host:
     def __init__(self, p):
         self.p = p
-        self.sources, self.include_dirs, self.inits = [], [], []
+        self.sources, self.include_dirs, self.inits, self.savers = [], [], [], []
+        self.defines = {}
         self.toggles = []                    # (config key, json key, var)
         self.use_fx = False
         self.deferred = []                   # (patcher method, site, symbol, why, thumb bit)
         self.syms = None
 
     # -- registration (from patch apply) -----------------------------------------------
-    def add(self, sources, include_dirs=(), init=None):
+    def add(self, sources, include_dirs=(), init=None, on_save=None, defines=None):
         """C sources to link; init: a void(void) function run at boot, after .bss is
-        zeroed and before the settings files load."""
+        zeroed and before the settings files load; on_save: a void(void) function run
+        whenever the firmware saves its settings, after device.json (and mods.json);
+        defines: {name: value} for every source in the link."""
         self.sources += [s for s in sources if s not in self.sources]
         self.include_dirs += [d for d in include_dirs if d not in self.include_dirs]
         if init and init not in self.inits:
             self.inits.append(init)
+        if on_save and on_save not in self.savers:
+            self.savers.append(on_save)
+        for k, v in (defines or {}).items():
+            if self.defines.get(k, v) != v:
+                raise HostError(f'define {k}: {v} clashes with {self.defines[k]}')
+            self.defines[k] = v
 
     def toggle(self, key, json_key, var):
         """On/off setting: config-page key (LED shows it), a bool in system/mods.json, uint8_t var."""
@@ -97,8 +116,9 @@ class Host:
         ents = ''.join(f'{{"{j}", (uint32_t)&{v}, 0x{JSON_BOOL:x}u, 0, 0}}, ' for _, j, v in self.toggles) or '{0, 0, 0, 0, 0}'
         lines += [f'static const pk_json_entry_t pk_mods_entries[] = {{{ents}}};',
                   f'const pk_json_schema_t pk_mods_schema = {{pk_mods_entries, {len(self.toggles)}}};']
-        lines += [f'void {f}(void);' for f in self.inits]
+        lines += [f'void {f}(void);' for f in self.inits + self.savers]
         lines.append('void pk_host_run_inits(void) {' + ''.join(f' {f}();' for f in self.inits) + ' }')
+        lines.append('void pk_host_run_savers(void) {' + ''.join(f' {f}();' for f in self.savers) + ' }')
         return '\n'.join(lines) + '\n'
 
     def finish(self):
@@ -106,6 +126,7 @@ class Host:
         # the same image whatever order the patches were applied in
         self.sources.sort()
         self.inits.sort()
+        self.savers.sort()
         self.toggles.sort()
         self.deferred.sort()
         if sym.mem['bss_end'] >= RAM_BASE:
@@ -116,7 +137,7 @@ class Host:
         origin = p.cave_origin('m4')
         blob, self.syms = cbuild.build('m4', srcs + self.sources, self.include_dirs,
                                        os.path.join(p.build_dir, 'm4host'), origin, 'pk4_boot', sym,
-                                       ram=(RAM_BASE, RAM_END - RAM_BASE),
+                                       ram=(RAM_BASE, RAM_END - RAM_BASE), defines=self.defines,
                                        extra_sources={'pk_host_gen.c': self.gen_source()})
         for v in (v for _, _, v in self.toggles):
             if v not in self.syms:
@@ -128,10 +149,11 @@ class Host:
                         'boot: zero patch RAM, mod inits, load device.json, then system/mods.json')
         p.replace_word('m4', 'sbrk.limit_literal', RAM_BASE + int(sym.raw['heap']['min_stack'], 16),
                        '_sbrk: cap M4 heap below patch RAM')
-        if self.toggles:
+        if self.toggles or self.savers:
             for site in SAVE_SITES:
                 p.redirect_branch('m4', site, s['pk4_device_json_save'],
-                                  f'{site.split(".")[0]}: save device.json, then system/mods.json')
+                                  f'{site.split(".")[0]}: save device.json, then the mods\' settings')
+        if self.toggles:
             p.replace_word('m4', 'cfg_page.event_word', s['pk4_cfg_event'] | 1, 'config page events -> toggles')
             p.replace_word('m4', 'cfg_page.render_word', s['pk4_cfg_render'] | 1, 'config page LEDs -> toggles')
         if self.use_fx:

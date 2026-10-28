@@ -19,6 +19,7 @@ extern const pk_toggle_t pk_toggles[];
 extern const int pk_n_toggles;
 extern const fw_json_schema_t pk_mods_schema;    /* entries hold absolute addresses */
 void pk_host_run_inits(void);
+void pk_host_run_savers(void);
 
 #define PK_MODS_JSON "system/mods.json"
 
@@ -48,6 +49,7 @@ void pk4_device_json_save(void)
     fw_device_json_save();
     if (pk_n_toggles)
         fw_json_save(PK_MODS_JSON, &pk_mods_schema, (const void *)0);
+    pk_host_run_savers();
 }
 
 int pk4_cfg_event(const uint8_t *evt)

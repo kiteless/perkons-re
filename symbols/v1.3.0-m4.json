@@ -78,6 +78,8 @@
     "fx_process_fnptr": "0x10000808",
     "sample_table": "0x2401ffb4",
     "sample_data": "0x240200e4",
+    "json_file": "0x24002a94",
+    "json_buf": "0x24002efc",
     "fx_bbd_state": "0x10028538",
     "fx_bbd_line": "0x100285c0",
     "hal_tick": "0x1002e6ec",
@@ -248,7 +250,8 @@
     "_comment": "become CONST_<name> in fw_syms.h",
     "cfg_key_event": "0x11",
     "fx_block_frames": "16",
-    "fx_switch_short_level": "1"
+    "fx_switch_short_level": "1",
+    "json_buf_size": "0x1000"
   },
   "offsets": {
     "_comment": "struct offsets (OFF_<a>_<b>)",
