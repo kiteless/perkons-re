@@ -51,6 +51,16 @@ class TestM4Host(unittest.TestCase):
         self.assertEqual(e.r8(s['pk_demo_a']), 0)
         self.assertEqual(e.r32(s['pk_demo_inited']), 0x600d)
 
+    def test_axi_variables_in_the_gap_and_zeroed_at_boot(self):
+        img, s = self.build()
+        lo, hi = m4host.axi_gap(self.s4)
+        self.assertTrue(all(lo <= s[v] < hi for v in ('pk_demo_b', 'pk_demo_axi_words')))
+        self.assertEqual(img.segment('m4').data, self.build()[0].segment('m4').data, 'nothing loaded into AXI')
+        e = self.emu(img)
+        e.uc.mem_write(s['pk_demo_axi_words'], b'\x55' * 16)
+        e.call(s['pk4_boot'], max_insns=50_000_000)
+        self.assertEqual(bytes(e.uc.mem_read(s['pk_demo_axi_words'], 16)), bytes(16))
+
     def test_config_toggles_dirty_flag_and_leds(self):
         img, s = self.build()
         e = self.emu(img)

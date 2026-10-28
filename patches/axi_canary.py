@@ -1,6 +1,6 @@
 """AXI SRAM canary: a test image that checks whether the AXI SRAM no firmware code
-references (m4host.axi_gap: between the M4's JSON buffer and the sample table, ~112 KB)
-is really unused.
+references (m4host.axi_gap: between the M4's JSON buffer and the sample table, ~111 KB)
+is really unused. Built with other mods, it checks the part their PK_AXI variables leave.
 
 At power-on the region is filled with a pattern. Whenever the firmware saves its settings
 (change any setting on a settings page and leave it), CANARY.TXT on the card root lists

@@ -1,7 +1,11 @@
 /* M4 host: shared plumbing for M4 mods built together (tools/perkons/m4host.py).
  *
- * Mods use ordinary globals: .bss lives in the patch RAM and is zeroed at boot, before
- * the mods' init functions run and before the settings files load.
+ * Mods use ordinary globals: .bss lives in the patch RAM (D2 SRAM, fast) and is zeroed at
+ * boot, before the mods' init functions run and before the settings files load. Globals
+ * marked PK_AXI live in AXI SRAM instead (~111 KB, a few cycles slower per access, also
+ * zeroed at boot). Rule: what the audio path touches per sample stays in .bss; settings,
+ * control-rate state and bulk data go in PK_AXI. Never share PK_AXI data with the M7 (its
+ * data cache may not see M4 writes); use the IPC streams.
  *
  * Config toggles: a mod defines `uint8_t <var>;` and registers it from Python with
  * host.toggle(key, json_key, var). The host flips it on that config-page key, marks the
@@ -15,6 +19,8 @@
 #pragma once
 #include <stdint.h>
 #include "fw_m4.h"
+
+#define PK_AXI          __attribute__((section(".pk_axi")))
 
 int pk_host_booted(void);               /* boot hook ran (guards calls that come earlier) */
 

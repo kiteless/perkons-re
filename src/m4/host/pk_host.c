@@ -23,7 +23,7 @@ void pk_host_run_savers(void);
 
 #define PK_MODS_JSON "system/mods.json"
 
-extern uint32_t __pk_bss_start[], __pk_bss_end[];
+extern uint32_t __pk_bss_start[], __pk_bss_end[], __pk_axi_start[], __pk_axi_end[];
 static uint32_t magic;
 
 int pk_host_booted(void)
@@ -35,6 +35,8 @@ int pk_host_booted(void)
 void pk4_boot(void)
 {
     for (uint32_t *p = __pk_bss_start; p < __pk_bss_end; p++)
+        *p = 0;
+    for (uint32_t *p = __pk_axi_start; p < __pk_axi_end; p++)
         *p = 0;
     magic = PK_HOST_MAGIC;
     pk_host_run_inits();

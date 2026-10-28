@@ -21,9 +21,13 @@ saved with the firmware's device.json, which stays stock. Mods talk to each othe
 through the weak hooks in include/m4/pk_host.h. p.cave_symbols['m4host'] gets the linked
 symbols (functions and .bss variables).
 
-RAM: .bss goes in the D2 SRAM gap between the newlib heap and the M7's audio DMA buffer
-(0x10040000); the heap is capped below it by patching _sbrk's limit. axi_gap() gives the
-AXI SRAM that no firmware code references (being mapped; not used by the host yet).
+RAM (both zeroed at boot, before the mods' inits):
+* .bss goes in the D2 SRAM gap between the newlib heap and the M7's audio DMA buffer
+  (0x10040000); the heap is capped below it by patching _sbrk's limit. Fast: for state
+  the audio path touches.
+* PK_AXI variables (include/m4/pk_host.h) go in the AXI SRAM no firmware code references
+  (axi_gap()). Larger and a few cycles slower per access: settings, control-rate state,
+  bulk data.
 """
 import os
 
@@ -135,9 +139,10 @@ class Host:
         if self.use_fx:
             srcs += [os.path.join(HOST_SRC, 'pk_host_fx.c'), os.path.join(HOST_SRC, 'pk_host_fx_defaults.c')]
         origin = p.cave_origin('m4')
+        lo, hi = axi_gap(sym)
         blob, self.syms = cbuild.build('m4', srcs + self.sources, self.include_dirs,
                                        os.path.join(p.build_dir, 'm4host'), origin, 'pk4_boot', sym,
-                                       ram=(RAM_BASE, RAM_END - RAM_BASE), defines=self.defines,
+                                       ram=(RAM_BASE, RAM_END - RAM_BASE), axi=(lo, hi - lo), defines=self.defines,
                                        extra_sources={'pk_host_gen.c': self.gen_source()})
         for v in (v for _, _, v in self.toggles):
             if v not in self.syms:

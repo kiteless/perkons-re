@@ -93,8 +93,15 @@ def apply(p, arg=None):
     h.redirect_call('fx_update.call_read_switch', 'pk_my_hook', 'why')   # own hook points
 ```
 
-In C, use ordinary globals (`uint8_t pk_cfg_my_mod;`): `.bss` lives in patch RAM and is
-zeroed at boot. FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
+In C, use ordinary globals: both RAM areas are zeroed at boot. Where they go:
+
+| RAM | how | size, speed | for |
+|---|---|---|---|
+| patch RAM (D2 SRAM) | plain globals (`.bss`) | 64 KB + 256 B, nearly all the shared FX buffer; fast | what the audio path touches per sample: buffers, positions, filter states |
+| AXI SRAM gap | `PK_AXI uint8_t pk_cfg_my_mod;` | ~111 KB; a few cycles slower per access | settings, control-rate state, bulk data |
+
+Never M7 DTCM (the M4 can't reach it), and never share `PK_AXI` data with the M7 (its
+data cache may not see M4 writes); use the IPC streams. FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 64 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
 
