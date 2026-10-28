@@ -1,7 +1,7 @@
 """M4 host: shared plumbing for M4 mods, so features can be built alone or together.
 
 Several M4 features need the same firmware hook points: the boot sequence, the config
-page, the device.json schema, the FX process pointer, patch RAM. Each can be patched only
+page, settings saving, the FX process pointer, patch RAM. Each can be patched only
 once, so instead of patching them, a mod registers with the host from its apply():
 
     from perkons import m4host
@@ -9,13 +9,14 @@ once, so instead of patching them, a mod registers with the host from its apply(
     def apply(p, arg=None):
         h = m4host.host(p)
         h.add([os.path.join(SRC, 'my_fx.c')], [SRC], init='pk_my_init')
-        h.toggle(46, 'my-feature', 'pk_cfg_my_feature')   # config key, device.json key, uint8_t var
+        h.toggle(46, 'my-feature', 'pk_cfg_my_feature')   # config key, mods.json key, uint8_t var
         h.fx()                                              # take over the FX process function
         h.redirect_call('some_fn.call_site', 'pk_my_hook', 'why')   # resolved after the link
 
 When every patch is applied (Patcher.finish / result), the host compiles all registered
-sources with its own (src/m4/host/) in one link, appends the code and, if needed, an
-extended device.json schema, and patches each hook point once. Mods talk to each other
+sources with its own (src/m4/host/) in one link, appends the code, and patches each
+hook point once. Toggles are stored in their own file, system/mods.json, loaded after and
+saved with the firmware's device.json, which stays stock. Mods talk to each other
 through the weak hooks in include/m4/pk_host.h. p.cave_symbols['m4host'] gets the linked
 symbols (functions and .bss variables).
 
@@ -23,7 +24,6 @@ RAM: .bss goes in the D2 SRAM gap between the newlib heap and the M7's audio DMA
 (0x10040000); the heap is capped below it by patching _sbrk's limit.
 """
 import os
-import struct
 
 from . import cbuild
 
@@ -31,7 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HOST_SRC = os.path.join(ROOT, 'src', 'm4', 'host')
 RAM_BASE, RAM_END = 0x1002ff00, 0x10040000    # v1.3.0: heap starts at bss_end 0x1002efb0
 JSON_BOOL = 0x80
-SCHEMA_SITES = ('device_schema.load_literal', 'device_schema.create_literal', 'device_schema.save_literal')
+SAVE_SITES = ('cfg_exit_save.tail_device_json_save', 'page11_exit.tail_device_json_save',
+              'page12_exit.tail_device_json_save')
 
 
 class HostError(Exception):
@@ -59,14 +60,14 @@ class Host:
     # -- registration (from patch apply) -----------------------------------------------
     def add(self, sources, include_dirs=(), init=None):
         """C sources to link; init: a void(void) function run at boot, after .bss is
-        zeroed and before device.json loads."""
+        zeroed and before the settings files load."""
         self.sources += [s for s in sources if s not in self.sources]
         self.include_dirs += [d for d in include_dirs if d not in self.include_dirs]
         if init and init not in self.inits:
             self.inits.append(init)
 
     def toggle(self, key, json_key, var):
-        """On/off setting: config-page key (LED shows it), device.json bool, uint8_t var."""
+        """On/off setting: config-page key (LED shows it), a bool in system/mods.json, uint8_t var."""
         for k, j, v in self.toggles:
             if key == k or json_key == j or var == v:
                 raise HostError(f'toggle {json_key} (key {key}, {var}) clashes with {j} (key {k}, {v})')
@@ -89,25 +90,16 @@ class Host:
         rows = ''.join(f'{{{k}, &{v}}}, ' for k, _, v in self.toggles) or '{0, 0}'
         lines += [f'const pk_toggle_t pk_toggles[] = {{{rows}}};',
                   f'const int pk_n_toggles = {len(self.toggles)};']
+        # system/mods.json: one bool per toggle; offsets are the variables' addresses
+        # (loaded and saved with a NULL struct base)
+        lines += ['typedef struct { const char *key; uint32_t offset, type; const void *e, *n; } pk_json_entry_t;',
+                  'typedef struct { const pk_json_entry_t *entries; uint32_t count; } pk_json_schema_t;']
+        ents = ''.join(f'{{"{j}", (uint32_t)&{v}, 0x{JSON_BOOL:x}u, 0, 0}}, ' for _, j, v in self.toggles) or '{0, 0, 0, 0, 0}'
+        lines += [f'static const pk_json_entry_t pk_mods_entries[] = {{{ents}}};',
+                  f'const pk_json_schema_t pk_mods_schema = {{pk_mods_entries, {len(self.toggles)}}};']
         lines += [f'void {f}(void);' for f in self.inits]
         lines.append('void pk_host_run_inits(void) {' + ''.join(f' {f}();' for f in self.inits) + ' }')
         return '\n'.join(lines) + '\n'
-
-    def extended_schema(self, at):
-        """The firmware's device.json schema plus the toggles, laid out at address `at`."""
-        sym = self.p.symbols['m4']
-        schema = sym.g['device_json_schema']
-        entries, count = struct.unpack('<II', self.p.read('m4', schema, 8))
-        n = count + len(self.toggles)
-        entries_at = at + 8
-        strings_at = entries_at + 20 * n
-        blob = struct.pack('<II', entries_at, n) + self.p.read('m4', entries, 20 * count)
-        strings = b''
-        for _, json_key, var in self.toggles:
-            rel = (self.syms[var] - sym.g['device_config']) & 0xffffffff
-            blob += struct.pack('<5I', strings_at + len(strings), rel, JSON_BOOL, 0, 0)
-            strings += json_key.encode() + b'\0'
-        return blob + strings
 
     def finish(self):
         p, sym = self.p, self.p.symbols['m4']
@@ -133,16 +125,13 @@ class Host:
 
         s = self.syms
         p.redirect_call('m4', 'boot_init.call_config_files_init', s['pk4_boot'],
-                        'boot: zero patch RAM, mod inits, then load device.json')
+                        'boot: zero patch RAM, mod inits, load device.json, then system/mods.json')
         p.replace_word('m4', 'sbrk.limit_literal', RAM_BASE + int(sym.raw['heap']['min_stack'], 16),
                        '_sbrk: cap M4 heap below patch RAM')
         if self.toggles:
-            at = p.cave_origin('m4', align=4)
-            schema = self.extended_schema(at)
-            assert p.append('m4', schema, f'device.json schema + {len(self.toggles)} keys ({len(schema)} B)',
-                            align=4) == at
-            for site in SCHEMA_SITES:
-                p.replace_word('m4', site, at, f'{site.split(".")[1]}: device.json schema -> extended')
+            for site in SAVE_SITES:
+                p.redirect_branch('m4', site, s['pk4_device_json_save'],
+                                  f'{site.split(".")[0]}: save device.json, then system/mods.json')
             p.replace_word('m4', 'cfg_page.event_word', s['pk4_cfg_event'] | 1, 'config page events -> toggles')
             p.replace_word('m4', 'cfg_page.render_word', s['pk4_cfg_render'] | 1, 'config page LEDs -> toggles')
         if self.use_fx:

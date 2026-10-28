@@ -1,5 +1,6 @@
 """M4 host (tools/perkons/m4host.py): config toggles, device.json keys, boot, FX chain.
 Needs arm-none-eabi-gcc."""
+import json
 import os
 import shutil
 import struct
@@ -66,13 +67,38 @@ class TestM4Host(unittest.TestCase):
         e.call(s['pk4_cfg_render'], 0, 0, 0, 0)
         self.assertEqual((leds.get(46), leds.get(47)), (0x80, 0x80))
 
-    def test_device_json_keys_load(self):
+    def test_settings_load_from_mods_json(self):
         img, s = self.build()
-        sd = {'system/device.json': b'{"vintage-bbd": true, "demo-a": true, "demo-b": false}'}
+        sd = {'system/device.json': b'{"vintage-bbd": true}', 'system/mods.json': b'{"demo-a": true, "demo-b": false}'}
         e = self.emu(img, sd)
         e.call(s['pk4_boot'], max_insns=50_000_000)
         self.assertEqual((e.r8(s['pk_demo_a']), e.r8(s['pk_demo_b'])), (1, 0))
         self.assertEqual(e.r8(self.s4.g['device_config'] + 7), 1, 'stock keys still load')
+
+    def test_mod_keys_in_device_json_are_ignored(self):
+        img, s = self.build()
+        e = self.emu(img, {'system/device.json': b'{"demo-a": true}'})
+        e.call(s['pk4_boot'], max_insns=50_000_000)
+        self.assertEqual(e.r8(s['pk_demo_a']), 0)
+
+    def test_saving_writes_mods_json_and_a_stock_device_json(self):
+        img, s = self.build()
+        e = self.emu(img, {'system/device.json': b'{"vintage-bbd": true}'})
+        e.call(s['pk4_boot'], max_insns=50_000_000)
+        e.w8(s['pk_demo_b'], 1)
+        e.call(s['pk4_device_json_save'], max_insns=50_000_000)
+        mods = json.loads(e.sd_written['system/mods.json'])
+        self.assertEqual(mods, {'demo-a': False, 'demo-b': True})
+        dev = json.loads(e.sd_written['system/device.json'])
+        self.assertNotIn('demo-a', dev)
+        self.assertTrue(dev['vintage-bbd'])
+
+    def test_device_json_schema_untouched(self):
+        img, _ = self.build()
+        seg, stock = img.segment('m4'), self.stock.segment('m4')
+        for site in ('device_schema.load_literal', 'device_schema.create_literal', 'device_schema.save_literal'):
+            a = self.s4.site(site)['addr'] - seg.addr
+            self.assertEqual(seg.data[a:a + 4], stock.data[a:a + 4], site)
 
     def test_heap_capped_below_patch_ram(self):
         img, s = self.build()

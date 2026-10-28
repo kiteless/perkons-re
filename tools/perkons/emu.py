@@ -384,9 +384,10 @@ class M7System(M7Emu):
 class M4Emu(CoreEmu):
     """The M4 (UI/SD) core, for running patch code and the firmware functions it calls.
 
-    `sd` is a virtual SD card: {path: bytes}. FatFs f_open/f_read/f_close/f_stat are
-    replaced by Python, so firmware code that reads files (e.g. the JSON loader) runs for
-    real against it. Paths are matched case-insensitively, like FAT."""
+    `sd` is a virtual SD card: {path: bytes}. FatFs f_open/f_read/f_write/f_close/f_stat
+    are replaced by Python, so firmware code that reads or writes files (e.g. the JSON
+    loader and saver) runs for real against it. Paths are matched case-insensitively, like
+    FAT. Files written show up in `sd_written` (and in `sd`, for later reads)."""
 
     OTHER_BASE = 0x08020000  # the M7 segment
 
@@ -394,10 +395,13 @@ class M4Emu(CoreEmu):
         super().__init__(m4_bin, symbols, m7_bin, **kw)
         self.sd = {self._norm(k): v for k, v in (sd or {}).items()}
         self.sd_log = []
+        self.sd_written = {}
         self._open = {}
         f = symbols.fn
         self.stub(f['f_open'], self._f_open)
         self.stub(f['f_read'], self._f_read)
+        if 'f_write' in f:
+            self.stub(f['f_write'], self._f_write)
         self.stub(f['f_close'], self._f_close)
         self.stub(f['f_stat'], self._f_stat)
         self.ipc = {k: _h(v) for k, v in symbols.raw['ipc'].items() if not k.startswith('_')}
@@ -414,8 +418,9 @@ class M4Emu(CoreEmu):
     def _f_open(self, emu, fp, path_ptr, mode, _):
         path = self.cstr(path_ptr)
         self.sd_log.append(('open', path, mode))
-        if mode & 0x02 or mode & 0x08 or mode & 0x10:  # write / create: read-only card
-            return self.FR_DENIED
+        if mode & 0x02 or mode & 0x08 or mode & 0x10:  # write / create: a new file
+            self._open[fp] = [bytearray(), 0, self._norm(path)]
+            return self.FR_OK
         data = self.sd.get(self._norm(path))
         if data is None:
             return self.FR_NO_FILE
@@ -430,8 +435,17 @@ class M4Emu(CoreEmu):
         self.w32(br_ptr, len(chunk))
         return self.FR_OK
 
+    def _f_write(self, emu, fp, buf, btw, bw_ptr):
+        f = self._open[fp]
+        f[0] += bytes(self.uc.mem_read(buf, btw))
+        if bw_ptr:
+            self.w32(bw_ptr, btw)
+        return self.FR_OK
+
     def _f_close(self, emu, fp, *_):
-        self._open.pop(fp, None)
+        f = self._open.pop(fp, None)
+        if f and len(f) == 3:                          # a file opened for writing
+            self.sd_written[f[2]] = self.sd[f[2]] = bytes(f[0])
         return self.FR_OK
 
     def _f_stat(self, emu, path_ptr, fno, *_):

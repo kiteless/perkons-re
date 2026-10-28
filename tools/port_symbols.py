@@ -35,8 +35,8 @@ def verify_sites(raw, seg, rep):
         ok, why = True, ''
         if 'call' in s:
             t = fns.get(s['call'])
-            ok = t is not None and cur == thumb_bl(a, t)
-            why = f'instruction there is not bl {s["call"]}'
+            ok = t is not None and cur == thumb_bl(a, t, link=not s.get('branch'))
+            why = f'instruction there is not {"b.w" if s.get("branch") else "bl"} {s["call"]}'
         elif 'bytes' in s:
             b = bytes.fromhex(s['bytes'])
             ok = seg.data[a - seg.addr:a - seg.addr + len(b)] == b

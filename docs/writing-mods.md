@@ -74,7 +74,7 @@ def apply(p, arg=None):  # arg: text after ':' in `my_mod:arg`
 
 ### M4 mods: use the M4 host (preferred)
 
-Boot, the config page, `device.json`, the FX process pointer and patch RAM can each be
+Boot, the config page, settings saving, the FX process pointer and patch RAM can each be
 patched only once, so M4 mods **register with the host** instead of patching them
 (`tools/perkons/m4host.py`, `include/m4/pk_host.h`). The host links all M4 mods in one
 build, whatever order they're applied in, so features can be combined freely:
@@ -88,7 +88,7 @@ SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 def apply(p, arg=None):
     h = m4host.host(p)
     h.add([os.path.join(SRC, 'my_mod.c')], [SRC], init='pk_my_mod_init')  # init runs at boot
-    h.toggle(45, 'my-mod', 'pk_cfg_my_mod')   # config key (LED shows it), device.json bool, uint8_t
+    h.toggle(45, 'my-mod', 'pk_cfg_my_mod')   # config key (LED shows it), mods.json bool, uint8_t
     h.fx()                                    # only if it takes part in the FX chain
     h.redirect_call('fx_update.call_read_switch', 'pk_my_hook', 'why')   # own hook points
 ```
@@ -100,7 +100,9 @@ zeroed at boot. FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 
 Config keys in use: **row 3 step 15 (key 46)** fx-reverb, **step 16 (key 47)** fx-freeze.
 Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–14; row 4 steps 2–14.
-Clashing keys or `device.json` names fail the build.
+Clashing keys or setting names fail the build. Toggles are saved in `system/mods.json`,
+never in the stock `device.json`: new settings go in new files, so deleting them gives
+stock behaviour.
 
 ### M7 mods: direct patching (no host yet)
 
@@ -139,7 +141,7 @@ symbols are in `patcher.cave_symbols['m4host']`. Harnesses in `tools/perkons/emu
 | `M4FX` | `fx_init`, SAI3 DMA callbacks, `fx_update`; knobs + switch from Python | FX mods (fails on writes outside the output block) |
 
 Minimum tests for a mod: **off = bit-identical to stock**, the feature does what it says,
-extremes don't clip or blow up, config/`device.json` keys load, and (if it can be combined
+extremes don't clip or blow up, settings load from their file, and (if it can be combined
 with others) a build with them. `make test` runs everything (~5 minutes; emulator-heavy).
 
 ## 5. Build and listen

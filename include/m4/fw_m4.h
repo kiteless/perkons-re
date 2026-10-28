@@ -35,6 +35,8 @@ typedef struct {
 
 #define fw_load_samples     FW_CALL(SYM_load_samples, void (*)(int bank))
 #define fw_json_load        FW_CALL(SYM_json_load, int (*)(const char *path, const fw_json_schema_t *, void *))
+#define fw_json_save        FW_CALL(SYM_json_save, int (*)(const char *path, const fw_json_schema_t *, const void *))
+#define fw_device_json_save FW_CALL(SYM_device_json_save, void (*)(void))   /* system/device.json */
 #define fw_file_exists      FW_CALL(SYM_file_exists, int (*)(const char *path))
 #define fw_snprintf         FW_CALL(SYM_snprintf, int (*)(char *, unsigned, const char *, ...))
 #define fw_ipc_send         FW_CALL(SYM_ipc_send, int (*)(int stream, const void *, int len, int type))

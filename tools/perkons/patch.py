@@ -102,6 +102,13 @@ class Patcher:
         old = self.symbols[seg].fn[s['call']]
         self.write(seg, s['addr'], thumb_bl(s['addr'], new_target), thumb_bl(s['addr'], old), why)
 
+    def redirect_branch(self, seg, site, new_target, why):
+        """Site is a tail call `b.w <fn>`: make it `b.w new_target`."""
+        s = self.site(seg, site)
+        old = self.symbols[seg].fn[s['call']]
+        self.write(seg, s['addr'], thumb_bl(s['addr'], new_target, link=False),
+                   thumb_bl(s['addr'], old, link=False), why)
+
     def replace_with_call(self, seg, site, new_target, why):
         """Site is a 4-byte instruction (`bytes`): replace it with `bl new_target`."""
         s = self.site(seg, site)

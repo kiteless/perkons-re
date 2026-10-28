@@ -162,7 +162,9 @@ def sites(img, sym, seg):
         off = s['addr'] - s_img.addr
         cur = s_img.data[off:off + 4]
         if 'call' in s:
-            need(cur == thumb_bl(s['addr'], sym.fn[s['call']]), f'{name}: not bl {s["call"]}')
+            branch = bool(s.get('branch'))
+            need(cur == thumb_bl(s['addr'], sym.fn[s['call']], link=not branch),
+                 f'{name}: not {"b.w" if branch else "bl"} {s["call"]}')
         elif 'bytes' in s:
             need(s_img.data[off:off + len(s['bytes'])] == s['bytes'], f'{name}: bytes differ')
         elif 'word' in s:
