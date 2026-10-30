@@ -100,7 +100,9 @@ In C, use ordinary globals: both RAM areas are zeroed at boot. Where they go:
 | patch RAM (D2 SRAM) | plain globals (`.bss`) | 64 KB + 256 B, nearly all the shared FX buffer; fast | what the audio path touches per sample: buffers, positions, filter states |
 | AXI SRAM gap | `PK_AXI uint8_t pk_cfg_my_mod;` | ~111 KB; a few cycles slower per access | settings, control-rate state, bulk data |
 
-Never M7 DTCM (the M4 can't reach it), and never share `PK_AXI` data with the M7 (its
+The Mod Matrix shows these as **MAIN** and **STORE** (and the M7's as **VOICE**, below):
+the M4 host records every RAM variable it links, a combination that doesn't fit can't be
+ticked, and the build refuses it (`tools/perkons/ram.py`). Never M7 DTCM (the M4 can't reach it), and never share `PK_AXI` data with the M7 (its
 data cache may not see M4 writes); use the IPC streams. FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 64 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
@@ -115,9 +117,13 @@ stock behaviour.
 
 Compile with `cbuild.build('m7', ...)` at `p.cave_origin('m7')`, `p.append()` the blob,
 then `p.redirect_call` / `p.replace_with_call` / `p.replace_word` at named sites. State
-lives at fixed RAM addresses (the cave has no startup code; `.data`/`.bss` are refused).
+lives at fixed RAM addresses (the cave has no startup code; `.data`/`.bss` are refused)
+in the **VOICE** area (`ram.areas()`: v1.3.0 0x2000c000–0x2001f000, M7 DTCM between the
+newlib heap cap and a 4 KB stack reserve). Record the range with
+`p.ram_use('voice', 'my_mod', size, addr)`: the build refuses ranges outside the area or
+overlapping another mod's, and the Mod Matrix counts it. voice-map takes 64.25 KB of it.
 See `voice-map` and `patches/example_hook.py`. Only one M7 mod can claim the `_sbrk` cap
-and patch RAM today; a second RAM-using M7 mod means building an M7 host first.
+today (voice-map does).
 
 ### A new voice engine: add it to voice-map
 

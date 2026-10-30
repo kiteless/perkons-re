@@ -53,10 +53,10 @@ from Homebrew. Long runs: start them in the background and wait for the notifica
 ## State (2026-10-25)
 
 * Supported base: firmware 1.3.0 only (porter rehearsed on 1.2.2 / 1.2.1 / 1.1.1).
-* Mod Matrix: working on macOS (browser). Ideas, not started: native window via pywebview
+* Mod Matrix: working on macOS (browser). MEMORY pane: MAIN / VOICE / STORE meters
+  (`tools/perkons/ram.py`), out-of-memory mods can't be ticked. Ideas, not started: native window via pywebview
   (needs install approval), packaged app (PyInstaller), shipping pre-compiled mod code so
-  users need no compiler; equaliser to be driven by a MOD file the owner will supply
-  (`EQ.source` hook in `ui/modmatrix/app.js`); Latvian letters (Ā Ē Ī Ū Č Š Ž Ķ Ļ Ņ Ģ)
+  users need no compiler; Latvian letters (Ā Ē Ī Ū Č Š Ž Ķ Ļ Ņ Ģ)
   could be added to `font.js`.
 * Mods overview: see `../perkons-re-mods/CLAUDE.md`.
 * After flashing, `INFO.TXT` on the card shows the build's `version_stamp` tag

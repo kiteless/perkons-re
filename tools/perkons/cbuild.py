@@ -16,6 +16,7 @@ and __pk_bss_end; the patch's boot code must zero it (the M4 host does, see m4ho
 With axi=(origin, length) too, variables in section ".pk_axi" go there (between
 __pk_axi_start and __pk_axi_end; also to be zeroed at boot); without it they join .bss.
 """
+import json
 import os
 import re
 import shutil
@@ -118,13 +119,24 @@ def build(core, src_files, include_dirs, build_dir, origin, entry, sym, extra_he
         else:
             f.write(LINKER_SCRIPT.format(origin=origin, length=max_len, entry=entry))
     elf = os.path.join(build_dir, 'cave.elf')
-    cmd = [tool('gcc'), *CPU_FLAGS[core], *CFLAGS, f'-I{gen}', *[f'-I{d}' for d in include_dirs],
-           f'-I{FW_INCLUDE[core]}',
-           *[f'-D{k}={v}' for k, v in (defines or {}).items()],
-           '-Wl,--gc-sections', f'-Wl,-T,{ld}', f'-Wl,-Map,{elf}.map', '-o', elf, *src_files]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    flags = [*CPU_FLAGS[core], *CFLAGS, f'-I{gen}', *[f'-I{d}' for d in include_dirs],
+             f'-I{FW_INCLUDE[core]}', *[f'-D{k}={v}' for k, v in (defines or {}).items()]]
+    # one object per source, so the link map says which source each RAM variable is from
+    objdir = os.path.join(build_dir, 'obj')
+    os.makedirs(objdir, exist_ok=True)
+    objs = {}
+    for i, src in enumerate(src_files):
+        obj = os.path.join(objdir, f'{i:02d}_{os.path.splitext(os.path.basename(src))[0]}.o')
+        r = subprocess.run([tool('gcc'), *flags, '-c', '-o', obj, src], capture_output=True, text=True)
+        if r.returncode:
+            raise BuildError('compile failed:\n' + r.stderr)
+        objs[obj] = os.path.abspath(src)
+    with open(os.path.join(build_dir, 'objects.json'), 'w') as f:
+        json.dump(objs, f)
+    r = subprocess.run([tool('gcc'), *flags, '-Wl,--gc-sections', f'-Wl,-T,{ld}', f'-Wl,-Map,{elf}.map',
+                        '-o', elf, *objs], capture_output=True, text=True)
     if r.returncode:
-        raise BuildError('compile failed:\n' + r.stderr)
+        raise BuildError('link failed:\n' + r.stderr)
     binf = os.path.join(build_dir, 'cave.bin')
     subprocess.run([tool('objcopy'), '-O', 'binary', '-j', '.text', elf, binf], check=True)
     out = subprocess.run([tool('nm'), elf], capture_output=True, text=True, check=True).stdout
@@ -137,3 +149,19 @@ def build(core, src_files, include_dirs, build_dir, origin, entry, sym, extra_he
         f.write(subprocess.run([tool('objdump'), '-d', elf], capture_output=True, text=True).stdout)
     with open(binf, 'rb') as f:
         return f.read(), syms
+
+
+def ram_sections(build_dir):
+    """{(source, section): size} for the RAM (.bss*, .pk_axi*) the last build in build_dir
+    linked in, from its map. The keys are the same in every build that links the same
+    source, so the RAM of a shared source can be counted once across builds."""
+    with open(os.path.join(build_dir, 'objects.json')) as f:
+        objs = json.load(f)
+    with open(os.path.join(build_dir, 'cave.elf.map')) as f:
+        text = f.read()
+    out = {}
+    for name, size, obj in re.findall(r'^ (\.(?:bss|pk_axi)\S*)\s+0x[0-9a-f]+\s+0x([0-9a-f]+)\s+(\S+\.o)$', text, re.M):
+        if int(size, 16):
+            key = (objs.get(obj, obj), name)
+            out[key] = out.get(key, 0) + int(size, 16)
+    return out

@@ -148,6 +148,9 @@ class Host:
             if v not in self.syms:
                 raise HostError(f'toggle variable {v} is not defined (uint8_t {v}; in a mod source)')
         assert p.append('m4', blob, f'M4 host + mods ({len(blob)} B)', align=16) == origin
+        for (src, section), size in cbuild.ram_sections(os.path.join(p.build_dir, 'm4host')).items():
+            owner = f'{os.path.relpath(src, ROOT)}:{section}'
+            p.ram_use('store' if section.startswith('.pk_axi') else 'main', owner, (size + 3) & ~3)   # placed by the linker
 
         s = self.syms
         p.redirect_call('m4', 'boot_init.call_config_files_init', s['pk4_boot'],

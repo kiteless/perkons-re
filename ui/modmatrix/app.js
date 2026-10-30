@@ -1,4 +1,4 @@
-/* Perkons Mod Matrix front end: loader intro, sine scroller, the three steps, equaliser.
+/* Perkons Mod Matrix front end: loader intro, sine scroller, the three steps, memory meters.
  * Talks to tools/modmatrix.py on the same origin. Needs font.js (FONT, C64, drawText, wrap). */
 "use strict";
 
@@ -200,55 +200,10 @@ function scroller() {
   requestAnimationFrame(frame);
 }
 
-/* ---- equaliser: random bars for now (a module player can drive levels later) ---- */
-
-const EQ = { levels: null, source: null };   // EQ.source = () => [0..1, ...] to drive it
-
-function equaliser() {
-  const cv = $("eq");
-  const ctx = cv.getContext("2d");
-  const BW = 20, GAP = 4, SEG = 8;
-  let vals = [], peaks = [], targets = [], last = null;
-
-  function frame(now) {
-    const W = cv.clientWidth, H = cv.clientHeight;
-    if (cv.width !== W * DPR || cv.height !== H * DPR) { cv.width = W * DPR; cv.height = H * DPR; }
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    const n = Math.max(4, Math.floor((W - GAP) / (BW + GAP)));
-    while (vals.length < n) { vals.push(0); peaks.push(0); targets.push(0); }
-    const dt = last === null ? 0 : Math.min(0.1, (now - last) / 1000);
-    last = now;
-    const src = EQ.source ? EQ.source(n) : null;
-    for (let i = 0; i < n; i++) {
-      if (src) targets[i] = src[i] || 0;
-      else if (Math.random() < dt * (REDUCED ? 2 : 9)) targets[i] = Math.pow(Math.random(), 1.4);
-      vals[i] += (targets[i] - vals[i]) * Math.min(1, dt * (REDUCED ? 4 : 18));
-      targets[i] *= 1 - dt * 1.5;
-      peaks[i] = Math.max(peaks[i] - dt * 0.5, vals[i]);
-    }
-    ctx.fillStyle = C64.black;
-    ctx.fillRect(0, 0, W, H);
-    const x0 = Math.floor((W - n * (BW + GAP) + GAP) / 2);
-    const segs = Math.floor((H - 8) / SEG);
-    for (let i = 0; i < n; i++) {
-      const x = x0 + i * (BW + GAP);
-      const lit = Math.round(vals[i] * segs);
-      for (let s = 0; s < lit; s++) {
-        const f = s / segs;
-        ctx.fillStyle = f > 0.8 ? C64.lightred : f > 0.6 ? C64.yellow : f > 0.35 ? C64.lightgreen : C64.green;
-        ctx.fillRect(x, H - 4 - (s + 1) * SEG + 2, BW, SEG - 2);
-      }
-      ctx.fillStyle = C64.white;
-      ctx.fillRect(x, H - 4 - Math.round(peaks[i] * segs) * SEG - 2, BW, 2);
-    }
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-}
-
 /* ---- the three steps ---- */
 
-const state = { status: null, options: [], image: null, info: null, chosen: new Set(), building: false };
+const state = { status: null, options: [], image: null, info: null, chosen: new Set(), building: false,
+  memory: null, hover: null };
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -290,6 +245,114 @@ function deselect(id) {
   for (const o of state.options) if ((o.requires || []).includes(id)) deselect(o.id);
 }
 
+/* ---- memory: MAIN (M4 patch RAM), VOICE (M7), STORE (AXI SRAM); see tools/perkons/ram.py ---- */
+
+const AREAS = ["main", "voice", "store"];
+
+/* ids plus what they require, transitively (catalog.with_requires) */
+function withRequires(ids) {
+  const out = [];
+  const add = (id) => {
+    const o = state.options.find((x) => x.id === id);
+    if (!o || out.includes(id)) return;
+    out.push(id);
+    (o.requires || []).forEach(add);
+  };
+  ids.forEach(add);
+  return out;
+}
+
+/* bytes per area for these options together: owners shared between options count once */
+function ramUsed(ids) {
+  const m = state.memory, owners = {};
+  for (const id of ids) {
+    for (const [a, own] of Object.entries(m.options[id] || {})) Object.assign(owners[a] = owners[a] || {}, own);
+  }
+  return Object.fromEntries(AREAS.map((a) => [a, Object.values(owners[a] || {}).reduce((s, n) => s + n, 0)]));
+}
+
+/* the first area these options don't fit in, or null */
+function overArea(ids) {
+  if (!state.memory || state.memory.state !== "done") return null;
+  const used = ramUsed(ids);
+  return AREAS.find((a) => used[a] > state.memory.areas[a].size) || null;
+}
+
+function kb(n) {
+  const k = n / 1024;
+  return (k < 10 ? (Math.floor(k * 10) / 10).toFixed(1) : String(Math.floor(k))) + "K";
+}
+
+/* a meter is a column of ring characters, filled from the bottom (white: what the mod under
+   the pointer would add) */
+const RING = [60, 126, 231, 195, 231, 126, 60, 0];
+const RING_S = 3, CELL = 8 * RING_S;
+
+function drawMeter(cv, frac, extra) {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * DPR;
+  cv.height = H * DPR;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const n = Math.max(1, Math.floor(H / CELL)), x = Math.floor((W - CELL) / 2);
+  const lit = Math.ceil(Math.min(1, frac) * n - 1e-9);
+  const ghost = Math.ceil(Math.min(1, frac + extra) * n - 1e-9);
+  for (let i = 0; i < n; i++) {
+    const f = i / n;
+    ctx.fillStyle = i < lit ? (f >= 0.85 ? C64.lightred : f >= 0.6 ? C64.yellow : C64.lightgreen)
+      : i < ghost ? C64.white : C64.darkgrey;
+    const y = H - (i + 1) * CELL;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (RING[r] & (0x80 >> c)) ctx.fillRect(x + c * RING_S, y + r * RING_S, RING_S, RING_S);
+      }
+    }
+  }
+}
+
+function renderMem() {
+  const m = state.memory, done = m && m.state === "done";
+  const ids = withRequires([...state.chosen]);
+  const used = done ? ramUsed(ids) : null;
+  const hov = done && state.hover && !state.chosen.has(state.hover) ? ramUsed(withRequires([...ids, state.hover])) : null;
+  for (const col of document.querySelectorAll("#mem .col")) {
+    const a = col.dataset.area, cap = col.querySelector(".cap"), free = col.querySelector(".free");
+    if (!done) {
+      setPix(cap, "-");
+      setPix(free, "-");
+      drawMeter(col.querySelector(".meter"), 0, 0);
+      continue;
+    }
+    const size = m.areas[a].size, left = size - used[a];
+    setPix(cap, kb(size));
+    free.className = "pix free" + (left < 0 ? " out" : left < size * 0.15 ? " low" : "");
+    setPix(free, left < 0 ? "0K" : kb(left));
+    drawMeter(col.querySelector(".meter"), used[a] / size, hov ? Math.max(0, hov[a] - used[a]) / size : 0);
+  }
+  const note = $("memnote");
+  note.hidden = done;
+  note.className = "pix " + (m && m.state === "error" ? "err" : "dim");
+  if (!m) setPix(note, "LOAD FIRMWARE TO MEASURE.");
+  else if (m.state === "error") {
+    setPix(note, `?CAN'T MEASURE: ${m.error.toUpperCase()}. RESTART THE MOD MATRIX (AN OLD ONE MAY STILL BE RUNNING).`);
+  } else if (!done) setPix(note, "MEASURING THE MODS...");
+}
+
+async function measure(image) {
+  state.memory = { state: "measuring" };
+  renderMem();
+  for (;;) {
+    let m;
+    try { m = await api(`/api/memory/${image}`); } catch (e) { m = { state: "error", error: e.message }; }
+    if (state.image !== image) return;             // another file loaded meanwhile
+    if (m.state !== "measuring") { state.memory = m; break; }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  renderMods();
+  updatePatch();
+}
+
 function renderMods() {
   const ul = $("mods");
   ul.textContent = "";
@@ -298,7 +361,9 @@ function renderMods() {
   }
   for (const o of state.options) {
     const li = document.createElement("li");
-    const ok = usable(o) && !clashes(o).length;
+    const over = state.chosen.has(o.id) ? null : overArea(withRequires([...state.chosen, o.id]));
+    const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
+    const ok = usable(o) && !clashes(o).length && !over && !merr;
     li.classList.toggle("off", !ok);
     const label = document.createElement("label");
     const box = document.createElement("input");
@@ -309,7 +374,7 @@ function renderMods() {
     box.addEventListener("change", () => {
       if (box.checked) select(o.id); else deselect(o.id);
       renderMods();
-      updateSlop();
+      updatePatch();
     });
     const row = document.createElement("div");
     row.className = "row";
@@ -322,17 +387,24 @@ function renderMods() {
     }
     const cl = clashes(o);
     if (cl.length) label.append(pix("p", "err", `CAN'T BE COMBINED WITH ${cl.join(", ").toUpperCase()}`));
+    if (over) label.append(pix("p", "err", `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`));
+    if (merr) label.append(pix("p", "err", `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}`));
     li.append(label);
+    li.addEventListener("mouseenter", () => { state.hover = o.id; renderMem(); });
+    li.addEventListener("mouseleave", () => { state.hover = null; renderMem(); });
+    box.addEventListener("focus", () => { state.hover = o.id; renderMem(); });
+    box.addEventListener("blur", () => { state.hover = null; renderMem(); });
     ul.append(li);
   }
   ul.querySelectorAll(".pix").forEach(pixRender);
+  renderMem();
 }
 
-function updateSlop() {
+function updatePatch() {
   const ready = state.info && state.info.official && state.info.supported && state.status && state.status.gcc;
   lock("s2", !ready);
   lock("s3", !ready);
-  $("slop").disabled = !ready || !state.chosen.size || state.building;
+  $("patch").disabled = !ready || !state.chosen.size || state.building;
   if (ready) renderMods();
   pixAll();
 }
@@ -342,11 +414,12 @@ async function loadFile(file) {
   state.info = null;
   state.image = null;
   state.chosen.clear();
+  state.memory = null;
   $("dl").hidden = true;
   $("howto").hidden = true;
   $("log").textContent = "";
   say(fw, "dim", `READING ${file.name.toUpperCase()}...`);
-  updateSlop();
+  updatePatch();
   try {
     const info = await api("/api/inspect", { method: "POST", body: file });
     state.info = info;
@@ -361,10 +434,11 @@ async function loadFile(file) {
     } else {
       say(fw, "ok", `FOUND ${id}. OFFICIAL IMAGE, CRC OK. READY TO MOD!`);
     }
+    if (info.official && info.supported) measure(info.image);
   } catch (e) {
     say(fw, "err", `?FILE ERROR: ${e.message.toUpperCase()}`);
   }
-  updateSlop();
+  updatePatch();
 }
 
 function logLines(lines) {
@@ -381,18 +455,18 @@ function logLines(lines) {
 
 async function build() {
   state.building = true;
-  const btn = $("slop");
+  const btn = $("patch");
   btn.classList.add("busy");
   $("dl").hidden = true;
   $("howto").hidden = true;
-  updateSlop();
+  updatePatch();
   const all = [];
   try {
     const { job } = await api("/api/build", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image: state.image, options: [...state.chosen], checks: true }),
     });
-    all.push("SLOPPING...");
+    all.push("PATCHING...");
     logLines(all);
     let since = 0, snap;
     for (;;) {
@@ -418,14 +492,13 @@ async function build() {
   }
   state.building = false;
   btn.classList.remove("busy");
-  updateSlop();
+  updatePatch();
 }
 
 async function main() {
   $("app").hidden = false;
   pixAll();
   scroller();
-  equaliser();
   try {
     state.status = await api("/api/status");
     state.options = (await api("/api/mods")).options;
@@ -433,7 +506,7 @@ async function main() {
     say($("fw"), "err", `?CAN'T REACH THE MOD MATRIX SERVER: ${e.message.toUpperCase()}`);
   }
   renderMods();
-  updateSlop();
+  updatePatch();
 
   const input = $("file"), drop = $("drop");
   input.addEventListener("change", () => input.files[0] && loadFile(input.files[0]));
@@ -441,15 +514,16 @@ async function main() {
   ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); pixAll(); }));
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); pixAll(); }));
   drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
-  $("slop").addEventListener("click", build);
+  $("patch").addEventListener("click", build);
   // hover/focus colours change the text colour, which the canvases have to redraw for
-  for (const el of document.querySelectorAll(".drop, .slop, .dl")) {
+  for (const el of document.querySelectorAll(".drop, .patch, .dl")) {
     for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
       el.addEventListener(ev, () => requestAnimationFrame(() => el.querySelectorAll(".pix").forEach(pixRender)));
     }
   }
+  if (window.ResizeObserver) new ResizeObserver(() => renderMem()).observe($("screen"));
   let rt;
-  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(pixAll, 100); });
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { pixAll(); renderMem(); }, 100); });
 }
 
 (async () => {

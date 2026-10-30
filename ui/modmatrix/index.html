@@ -13,6 +13,7 @@
   <header id="banner"><canvas id="scroller" aria-hidden="true"></canvas>
     <h1 class="sr">Perkons Mod Matrix</h1></header>
 
+  <div id="desk">
   <main id="screen">
     <p class="pix title" data-align="center">**** PERKONS MOD MATRIX V1 ****</p>
     <p class="pix dim" data-align="center">BUILD MODDED FIRMWARE FROM YOUR OWN OFFICIAL IMAGE</p>
@@ -33,19 +34,46 @@
 
     <section id="s3" class="step locked" aria-disabled="true">
       <h2 class="pix head">3. BUILD</h2>
-      <button id="slop" class="slop" disabled><span class="pix" data-nowrap="1" data-scale="4">SLOP IT UP</span></button>
+      <button id="patch" class="patch" disabled><span class="pix" data-nowrap="1" data-scale="4">PATCH IT</span></button>
       <div id="log" class="log" aria-live="polite"></div>
       <a id="dl" class="dl" hidden><span class="pix" data-nowrap="1">DOWNLOAD</span></a>
       <p id="howto" class="pix dim" hidden>COPY IT TO THE ROOT OF THE SD CARD UNDER THAT NAME AND POWER ON. THE UNIT FLASHES ITSELF. TO GO BACK, DO THE SAME WITH THE OFFICIAL IMAGE.</p>
     </section>
   </main>
 
+  <aside id="mem" aria-labelledby="mem-title">
+    <h2 id="mem-title" class="pix head" data-align="center">MEMORY</h2>
+    <div class="cols">
+      <div class="col" data-area="main">
+        <p class="pix lab" data-nowrap="1">MAIN</p>
+        <p class="pix cap dim" data-nowrap="1">-</p>
+        <canvas class="meter" aria-hidden="true"></canvas>
+        <p class="pix free" data-nowrap="1">-</p>
+        <p class="pix dim" data-nowrap="1">FREE</p>
+      </div>
+      <div class="col" data-area="voice">
+        <p class="pix lab" data-nowrap="1">VOICE</p>
+        <p class="pix cap dim" data-nowrap="1">-</p>
+        <canvas class="meter" aria-hidden="true"></canvas>
+        <p class="pix free" data-nowrap="1">-</p>
+        <p class="pix dim" data-nowrap="1">FREE</p>
+      </div>
+      <div class="col" data-area="store">
+        <p class="pix lab" data-nowrap="1">STORE</p>
+        <p class="pix cap dim" data-nowrap="1">-</p>
+        <canvas class="meter" aria-hidden="true"></canvas>
+        <p class="pix free" data-nowrap="1">-</p>
+        <p class="pix dim" data-nowrap="1">FREE</p>
+      </div>
+    </div>
+    <p id="memnote" class="pix dim" aria-live="polite">LOAD FIRMWARE TO MEASURE.</p>
+  </aside>
+  </div>
+
   <section id="disclaimer">
     <p class="pix warn">DISCLAIMER</p>
     <p class="pix">UNOFFICIAL. NOT AFFILIATED WITH OR ENDORSED BY ERICA SYNTHS. MODDED FIRMWARE IS FLASHED ENTIRELY AT YOUR OWN RISK: THE AUTHOR IS NOT RESPONSIBLE FOR BRICKED DEVICES, LOST SAMPLES OR SETTINGS, A VOIDED WARRANTY OR ANY OTHER DAMAGE. KEEP THE OFFICIAL FIRMWARE AND REFLASH IT BEFORE ANY SERVICE. A BUILT IMAGE CONTAINS ERICA SYNTHS' FIRMWARE: IT IS FOR YOUR OWN DEVICE ONLY, DON'T SHARE IT. EVERYTHING RUNS ON THIS COMPUTER; NOTHING IS UPLOADED ANYWHERE.</p>
   </section>
-
-  <footer id="eqbox"><canvas id="eq" aria-hidden="true"></canvas></footer>
 </div>
 
 <script src="font.js"></script>

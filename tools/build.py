@@ -25,14 +25,11 @@ from perkons.mods import load_patch  # noqa: E402
 from perkons.patch import Patcher  # noqa: E402
 
 
-def build_image(base, out_path, specs, symbols_m7, build_dir=None, extra_kwargs=None):
-    """Apply patch specs ('name' or 'name:arg') to `base` and write `out_path`.
-    extra_kwargs: {patch name: {kwarg: value}} passed to that patch's apply().
-    Returns (Image, Patcher)."""
+def apply_specs(base, specs, symbols_m7, build_dir, extra_kwargs=None):
+    """Apply patch specs ('name' or 'name:arg') to `base`. Returns the finished Patcher."""
     p = Patcher(base)
     p.symbols = {'m7': Symbols(symbols_m7), 'm4': Symbols(symbols_m7.replace('-m7.json', '-m4.json'))}
-    p.build_dir = build_dir or os.path.join(os.path.dirname(os.path.abspath(out_path)), 'obj',
-                                            os.path.basename(out_path))
+    p.build_dir = build_dir
     for spec in specs:
         name, _, arg = spec.partition(':')
         mod = load_patch(name)
@@ -42,6 +39,15 @@ def build_image(base, out_path, specs, symbols_m7, build_dir=None, extra_kwargs=
         kw = (extra_kwargs or {}).get(name, {})
         mod.apply(p, arg, **kw) if arg else mod.apply(p, **kw)
     p.finish()
+    return p
+
+
+def build_image(base, out_path, specs, symbols_m7, build_dir=None, extra_kwargs=None):
+    """Apply patch specs ('name' or 'name:arg') to `base` and write `out_path`.
+    extra_kwargs: {patch name: {kwarg: value}} passed to that patch's apply().
+    Returns (Image, Patcher)."""
+    p = apply_specs(base, specs, symbols_m7, build_dir or os.path.join(
+        os.path.dirname(os.path.abspath(out_path)), 'obj', os.path.basename(out_path)), extra_kwargs)
     print(p.report())
     p.result().save(out_path)
     chk = Image.load(out_path)

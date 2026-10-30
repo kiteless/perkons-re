@@ -112,7 +112,7 @@ def check_selection(ids, version):
         missing = set(o['requires']) - set(ids)
         if missing:
             raise CatalogError(f'{o["title"]} needs {", ".join(sorted(missing))} too')
-    specs = [p for o in chosen for p in o['patches']]
+    specs = list(dict.fromkeys(p for o in chosen for p in o['patches']))   # a shared patch once
     return chosen, specs
 
 
@@ -122,3 +122,41 @@ def build_tag(chosen):
     if len(tag) > MAX_TAG:
         tag = 'mm-' + hashlib.sha1('+'.join(o['id'] for o in chosen).encode()).hexdigest()[:MAX_TAG - 3]
     return tag
+
+
+# -- RAM (MAIN / VOICE / STORE, see ram.py) ----------------------------------------------
+# The Mod Matrix measures each option by building it alone (with what it requires) and
+# keeps {option: {area: {owner: bytes}}}; a combination takes the union of the owners, so
+# RAM two options share (the FX buffer) counts once. The real build checks it exactly.
+
+def with_requires(ids, by_id=None):
+    """ids plus everything they require, transitively (in a stable order)."""
+    by_id = by_id or {o['id']: o for o in options()}
+    out = []
+
+    def add(i):
+        if i in out or i not in by_id:
+            return
+        out.append(i)
+        for r in by_id[i]['requires']:
+            add(r)
+    for i in ids:
+        add(i)
+    return out
+
+
+def ram_used(ids, memory):
+    """{area: bytes} for these options together, from a measurement (App.measure)."""
+    owners = {}
+    for i in ids:
+        for area, own in memory['options'].get(i, {}).items():
+            owners.setdefault(area, {}).update(own)
+    return {a: sum(owners.get(a, {}).values()) for a in memory['areas']}
+
+
+def check_memory(ids, memory):
+    used = ram_used(ids, memory)
+    for a, info in memory['areas'].items():
+        if used[a] > info['size']:
+            raise CatalogError(f'out of memory in {a.upper()}: these mods need {used[a]} B, '
+                               f'{info["size"]} B available')

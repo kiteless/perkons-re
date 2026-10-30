@@ -18,12 +18,40 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 #banner { background: var(--black); }
 #scroller { width: 100%; height: 150px; }
 
-/* the blue "screen" with the light-blue border */
+/* the blue "screen" with the light-blue border, and the memory pane to its right */
+#desk {
+  display: flex; align-items: flex-start; gap: 24px;
+  max-width: 1368px; margin: 24px auto; padding: 0 24px;
+}
 #screen {
-  max-width: 980px; margin: 24px auto; padding: 24px;
+  flex: 1 1 auto; min-width: 0; max-width: 980px; padding: 24px;
   background: var(--blue); border: 24px solid var(--lightblue);
 }
-@media (max-width: 600px) { #screen { margin: 12px 8px; padding: 12px; border-width: 12px; } }
+@media (max-width: 1100px) {
+  #desk { flex-direction: column; align-items: stretch; max-width: 1028px; }
+  #screen { max-width: none; }
+}
+@media (max-width: 600px) {
+  #desk { margin: 12px auto; padding: 0 8px; gap: 12px; }
+  #screen, #mem { padding: 12px; border-width: 12px; }
+}
+
+/* memory pane: three meters, after the sign-on screen of a 1992 PC shooter; as tall as
+   the main box, the ring columns take what the text leaves */
+#mem {
+  flex: 0 0 auto; align-self: stretch; display: flex; flex-direction: column;
+  padding: 24px; background: var(--blue); border: 24px solid var(--lightblue);
+}
+#mem .cols { flex: 1 1 auto; display: flex; justify-content: center; gap: 24px; margin-top: 8px; min-height: 0; }
+#mem .col { width: 80px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#mem .lab { color: var(--white); }
+#mem .free { color: var(--lightgreen); margin-top: 4px; }
+#mem .free.low { color: var(--yellow); }
+#mem .free.out { color: var(--lightred); }
+#mem .meter { width: 24px; flex: 1 1 0; min-height: 0; }
+#memnote { margin-top: 16px; }
+#memnote[hidden] { display: none; }
+@media (max-width: 1100px) { #mem .meter { flex: 0 0 240px; } }
 
 .pix { margin: 0; color: var(--lightblue); }
 .pix canvas { max-width: 100%; }
@@ -56,15 +84,19 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 #mods li.off .pix { color: var(--grey); }
 #mods li.off label { cursor: not-allowed; }
 
-.slop {
-  display: inline-block; padding: 16px 24px; border: 0; cursor: pointer;
-  background: var(--lightblue); font: inherit;
+.patch {
+  display: block; width: 100%; padding: 16px 24px; cursor: pointer; text-align: left;
+  background: var(--lightblue); border: 4px solid var(--lightblue); font: inherit;
 }
-.slop .pix { color: var(--blue); }
-.slop:hover:not(:disabled), .slop:focus-visible { background: var(--white); outline: none; }
-.slop:disabled { background: var(--darkgrey); cursor: not-allowed; }
-.slop:disabled .pix { color: var(--grey); }
-.slop.busy { background: var(--yellow); }
+.patch .pix { color: var(--blue); }
+.patch:hover:not(:disabled), .patch:focus-visible { background: var(--white); border-color: var(--white); outline: none; }
+/* inactive: a dashed outline, like the firmware drop area */
+.patch:disabled { background: var(--blue); border-style: dashed; cursor: not-allowed; }
+.patch:disabled .pix { color: var(--lightblue); }
+.step.locked .patch { border-color: var(--grey); }
+.step.locked .patch .pix { color: var(--grey); }
+.patch.busy, .patch.busy:disabled { background: var(--yellow); border: 4px solid var(--yellow); }
+.patch.busy .pix { color: var(--blue); }
 
 .log { margin-top: 20px; min-height: 16px; }
 .log .pix { color: var(--lightblue); }
@@ -79,5 +111,3 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 #disclaimer { max-width: 980px; margin: 0 auto 24px; padding: 0 24px; }
 #disclaimer .pix:not(.warn) { color: var(--grey); }
 
-#eqbox { background: var(--black); }
-#eq { width: 100%; height: 140px; }

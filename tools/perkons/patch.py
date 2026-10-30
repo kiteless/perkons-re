@@ -43,6 +43,7 @@ class Patcher:
         # patches that cooperate register with each other here, by agreed keys (e.g. a
         # mod offering extra engines to another mod), without importing each other
         self.shared = {}
+        self.ram = {}      # {area: {owner: (addr or None, size)}}, see ram.py
 
     # -- primitives ------------------------------------------------------------------
     def _seg(self, name):
@@ -132,9 +133,21 @@ class Patcher:
         several patches register into, like the M4 host)."""
         self._finishers.append(fn)
 
+    def ram_use(self, area, owner, size, addr=None):
+        """Record RAM this build takes in a ram.AREAS area (`addr` for a fixed range)."""
+        from . import ram
+        if area not in ram.AREAS:
+            raise PatchError(f'{owner}: unknown RAM area {area!r}')
+        self.ram.setdefault(area, {})[owner] = (addr, size)
+
     def finish(self):
         while self._finishers:
             self._finishers.pop(0)()
+        if self.ram:
+            from . import ram
+            err = ram.check(self.ram, self.symbols)
+            if err:
+                raise PatchError(err)
 
     # -- output ----------------------------------------------------------------------
     def result(self) -> Image:

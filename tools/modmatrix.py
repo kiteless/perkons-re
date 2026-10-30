@@ -13,6 +13,9 @@ API (JSON unless noted):
   GET  /api/status             toolchain check, supported versions
   GET  /api/mods               options
   POST /api/inspect            body: the .img bytes -> {image id, version, official, ...}
+  GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
+                               {state: measuring|done, areas: {main|voice|store: {size}},
+                                options: {id: {area: {owner: bytes}}}, errors: {id: text}}
   POST /api/build              {image, options: [ids], checks: bool} -> {job}
   GET  /api/job/<id>           {state: running|done|failed, log: [...], download}
   GET  /api/download/<id>      the built image (application/octet-stream)
@@ -35,8 +38,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.insert(0, ROOT)
-from build import build_image, regression  # noqa: E402
-from perkons import catalog, cbuild  # noqa: E402
+from build import apply_specs, build_image, regression  # noqa: E402
+from perkons import catalog, cbuild, ram  # noqa: E402
+from perkons.emu import Symbols  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
 MAX_IMAGE = 16 * 1024 * 1024
@@ -77,6 +81,7 @@ class Job:
 class App:
     def __init__(self, intro=True):
         self.images = {}                     # image id -> (Image, raw bytes, info)
+        self.memory = {}                     # image id -> measurement (see /api/memory)
         self.jobs = {}
         self.build_lock = threading.Lock()   # one build at a time (build output goes via stdout)
         self.work = tempfile.mkdtemp(prefix='modmatrix-')
@@ -94,7 +99,33 @@ class App:
         img, info = catalog.inspect(raw)
         image_id = info['sha256'][:16]
         self.images[image_id] = (img, raw, info)
+        if info['official'] and info['supported'] and image_id not in self.memory:
+            self.memory[image_id] = {'state': 'measuring'}
+            threading.Thread(target=self.measure, args=(image_id,), daemon=True).start()
         return {'image': image_id, **info}
+
+    def measure(self, image_id):
+        """Build every option alone (with what it requires, no image written) and record the
+        RAM it takes, for the MAIN / VOICE / STORE meters."""
+        img, _, info = self.images[image_id]
+        symbols = os.path.join(ROOT, 'symbols', f'v{info["version"]}-m7.json')
+        syms = {'m7': Symbols(symbols), 'm4': Symbols(symbols.replace('-m7.json', '-m4.json'))}
+        areas = {a: {'start': lo, 'size': hi - lo} for a, (lo, hi) in ram.areas(syms).items()}
+        opts, errors = {}, {}
+        with self.build_lock:
+            by_id = {o['id']: o for o in catalog.options()}
+            for o in by_id.values():
+                if o['target'] not in (None, info['version']):
+                    continue
+                specs = list(dict.fromkeys(s for i in catalog.with_requires([o['id']], by_id)
+                                           for s in by_id[i]['patches']))
+                try:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        p = apply_specs(img, specs, symbols, os.path.join(self.work, 'measure', o['id']))
+                    opts[o['id']] = {a: {k: size for k, (_, size) in own.items()} for a, own in p.ram.items()}
+                except BaseException as e:   # also sys.exit from a target mismatch
+                    errors[o['id']] = str(e)
+        self.memory[image_id] = {'state': 'done', 'areas': areas, 'options': opts, 'errors': errors}
 
     def start_build(self, req):
         if req.get('image') not in self.images:
@@ -103,6 +134,9 @@ class App:
         if not info['supported']:
             raise catalog.CatalogError(f'firmware {info["version"]} is not supported yet')
         chosen, specs = catalog.check_selection(list(req.get('options', [])), info['version'])
+        mem = self.memory.get(req['image'], {})
+        if mem.get('state') == 'done':
+            catalog.check_memory([o['id'] for o in chosen], mem)
         job = Job(img, raw, chosen, specs, bool(req.get('checks', True)))
         self.jobs[job.id] = job
         threading.Thread(target=self.run, args=(job,), daemon=True).start()
@@ -178,6 +212,11 @@ def make_handler(app):
                 return self.guarded(app.status)
             if path == '/api/mods':
                 return self.guarded(lambda: {'options': catalog.options()})
+            if path.startswith('/api/memory/'):
+                mem = app.memory.get(path.rsplit('/', 1)[1])
+                if not mem:
+                    return self.send_json({'error': 'load a firmware image first'}, HTTPStatus.NOT_FOUND)
+                return self.send_json(mem)
             if path.startswith('/api/job/'):
                 job = app.jobs.get(path.rsplit('/', 1)[1])
                 if not job:

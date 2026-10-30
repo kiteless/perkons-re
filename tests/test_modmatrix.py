@@ -109,7 +109,22 @@ class TestModMatrix(unittest.TestCase):
     def test_server_serves_the_page(self):
         code, page = self.call('/')
         self.assertEqual(code, 200)
-        self.assertIn(b'SLOP IT UP', page)
+        self.assertIn(b'PATCH IT', page)
+
+    def test_memory_is_measured_after_inspect(self):
+        code, info = self.call('/api/inspect', body=self.raw)
+        self.assertEqual(code, 200)
+        for _ in range(300):
+            _, mem = self.call(f'/api/memory/{info["image"]}')
+            if mem['state'] != 'measuring':
+                break
+            time.sleep(0.2)
+        self.assertEqual(mem['state'], 'done')
+        self.assertEqual(set(mem['areas']), {'main', 'voice', 'store'})
+        self.assertEqual(mem['errors'], {})
+        self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), {'main': 0, 'voice': 0, 'store': 0})
+        code, _ = self.call('/api/memory/nope')
+        self.assertEqual(code, 404)
 
     def test_build_and_download(self):
         code, info = self.call('/api/inspect', body=self.raw)

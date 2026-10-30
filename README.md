@@ -69,7 +69,7 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 1. Drop the official `perkons_v1.3.0-0-force.img` on the page (or click to choose it). It
    only accepts an unmodified official image.
 2. Tick the mods you want. Some need another mod; the page ticks it for you.
-3. Press **SLOP IT UP** and wait about a minute.
+3. Press **PATCH IT** and wait about a minute.
 4. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
 
 ### 5. Flash it
@@ -115,7 +115,7 @@ any warranty service. More on flashing and recovery: [docs/process.md](docs/proc
 | `tools/run_tests.py` | framework tests + mod tests |
 | `start_modmatrix.py` | one-step setup + start of the Mod Matrix (see [Get modded firmware](#get-modded-firmware)) |
 | `tools/modmatrix.py`, `ui/modmatrix/` | **Mod Matrix**: pick mods with checkboxes, build modded firmware from your own official image in the browser |
-| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `catalog` (Mod Matrix options and image checks) |
+| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
 | `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the unreferenced AXI SRAM gets overwritten) |
 | `symbols/` | per-version functions, globals, struct offsets and named patch sites; the only place addresses live (read by the emulator, C builds, patches and Ghidra) |
@@ -185,6 +185,11 @@ HTML/JS page in `ui/modmatrix/`. It reads only the image's header (version), CRC
 hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the build with
 `version_stamp` (`mm-<codes>`), and serves the result for download. Options: `--port N`,
 `--no-browser`, `--no-intro`.
+
+The **MEMORY** pane shows the RAM mods can use, in three areas: **MAIN** (M4 patch RAM,
+64 KB), **VOICE** (M7 RAM, 76 KB) and **STORE** (AXI SRAM, 111 KB). After an image is
+loaded it builds each option alone to see what it takes; the meters follow the ticks, and
+a mod that wouldn't fit can't be ticked (`tools/perkons/ram.py`).
 
 ### Adding a mod to it
 
