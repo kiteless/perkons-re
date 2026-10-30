@@ -85,6 +85,21 @@ class TestM4Host(unittest.TestCase):
         self.assertEqual((e.r8(s['pk_demo_a']), e.r8(s['pk_demo_b'])), (1, 0))
         self.assertEqual(e.r8(self.s4.g['device_config'] + 7), 1, 'stock keys still load')
 
+    def test_settings_load_and_save_in_mods_json(self):
+        p = Patcher(self.stock)
+        p.symbols = {'m7': self.s7, 'm4': self.s4}
+        p.build_dir = tempfile.mkdtemp(dir=self.tmp)
+        h = m4host.host(p)
+        h.add([DEMO], init='pk_demo_init')
+        h.setting('demo-number', 'pk_demo_a')
+        img, s = p.result(), p.cave_symbols['m4host']
+        e = self.emu(img, {'system/mods.json': b'{"demo-number": 42}'})
+        e.call(s['pk4_boot'], max_insns=50_000_000)
+        self.assertEqual(e.r8(s['pk_demo_a']), 42)
+        e.w8(s['pk_demo_a'], 7)
+        e.call(s['pk4_device_json_save'], max_insns=50_000_000)
+        self.assertEqual(json.loads(e.sd_written['system/mods.json']), {'demo-number': 7})
+
     def test_mod_keys_in_device_json_are_ignored(self):
         img, s = self.build()
         e = self.emu(img, {'system/device.json': b'{"demo-a": true}'})

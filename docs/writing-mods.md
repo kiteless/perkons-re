@@ -187,7 +187,7 @@ write WAVs to `out/` (gitignored) to listen before hardware.
 }
 ```
 
-`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, zb). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
+`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, zb, et). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
 them along). Only list user-facing options; development patches stay out. `make ui` to check it appears.
 
 Give the mod a user-facing `README.md`: what it does, how to use it, and a "Getting it"

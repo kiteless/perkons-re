@@ -1,6 +1,6 @@
 /* M4 host: boot hook, config-page toggles and their settings file. See include/m4/pk_host.h.
  *
- * The toggles live in their own file, system/mods.json, loaded right after the firmware's
+ * The toggles and settings live in their own file, system/mods.json, loaded right after the firmware's
  * system/device.json and saved whenever the firmware saves it, so device.json stays
  * exactly stock (delete mods.json and every mod setting is back to off). */
 #include <stdint.h>
@@ -41,7 +41,7 @@ void pk4_boot(void)
     magic = PK_HOST_MAGIC;
     pk_host_run_inits();
     fw_config_files_init();             /* loads system/device.json (stock) */
-    if (pk_n_toggles)
+    if (pk_mods_schema.count)
         fw_json_load(PK_MODS_JSON, &pk_mods_schema, (void *)0);
 }
 
@@ -49,7 +49,7 @@ void pk4_boot(void)
 void pk4_device_json_save(void)
 {
     fw_device_json_save();
-    if (pk_n_toggles)
+    if (pk_mods_schema.count)
         fw_json_save(PK_MODS_JSON, &pk_mods_schema, (const void *)0);
     pk_host_run_savers();
 }

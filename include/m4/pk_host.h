@@ -7,6 +7,9 @@
  * control-rate state and bulk data go in PK_AXI. Never share PK_AXI data with the M7 (its
  * data cache may not see M4 writes); use the IPC streams.
  *
+ * Settings: host.setting(json_key, var) stores a uint8_t number in system/mods.json too
+ * (no UI of its own; the mod sets the default in its init).
+ *
  * Config toggles: a mod defines `uint8_t <var>;` and registers it from Python with
  * host.toggle(key, json_key, var). The host flips it on that config-page key, marks the
  * config for saving, lights the key's LED, and stores it in system/mods.json (its own

@@ -87,9 +87,10 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 
 Each mod's page says how to use it:
 [voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
-[ZIBENS](https://github.com/kiteless/perkons-re-mods/tree/main/zibens),
+[Zibens](https://github.com/kiteless/perkons-re-mods/tree/main/zibens),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
-[fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze).
+[fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
+[8 tracks](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes).
 
 ### Going back to the official firmware
 
