@@ -19,6 +19,8 @@ You pick the mods you want in the **Mod Matrix**, a small app that runs in your 
 on your own computer. It patches the official firmware you downloaded from Erica Synths
 and gives you a new firmware file to flash. Nothing is uploaded anywhere.
 
+![The Mod Matrix: load your official image, tick the mods, PATCH IT; the MEMORY pane shows how much room the chosen mods take](docs/img/modmatrix.jpg)
+
 ### What you need
 
 * The official Pērkons firmware **1.3.0** from Erica Synths (the file is called
