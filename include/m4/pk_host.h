@@ -25,8 +25,8 @@
 int pk_host_booted(void);               /* boot hook ran (guards calls that come earlier) */
 
 #define PK_FX_NF        ((int)CONST_fx_block_frames)   /* stereo frames per block, L used */
-#define PK_FX_BUF_LEN   32768
-extern int16_t pk_fx_buf[PK_FX_BUF_LEN];               /* 64 KB, owned by the running engine */
+#define PK_FX_BUF_LEN   16384
+extern int16_t pk_fx_buf[PK_FX_BUF_LEN];               /* 32 KB, owned by the running engine */
 
 void pk_fx_engine(const int16_t *in, int16_t *out);    /* default: pk_fx_delay */
 void pk_fx_delay(const int16_t *in, int16_t *out);     /* default: stock BBD */
