@@ -94,7 +94,8 @@ Each mod's page says how to use it:
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
 [eight-lanes](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes),
-[per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo).
+[per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo),
+[pattern-bpm](https://github.com/kiteless/perkons-re-mods/tree/main/pattern-bpm).
 
 ### Going back to the official firmware
 
