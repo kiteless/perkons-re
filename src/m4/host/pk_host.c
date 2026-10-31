@@ -24,11 +24,11 @@ void pk_host_run_savers(void);
 #define PK_MODS_JSON "system/mods.json"
 
 extern uint32_t __pk_bss_start[], __pk_bss_end[], __pk_axi_start[], __pk_axi_end[];
-static uint32_t magic;
+uint32_t pk_host_magic;             /* PK_HOST_MAGIC once booted; the hook guards read it */
 
 int pk_host_booted(void)
 {
-    return magic == PK_HOST_MAGIC;
+    return pk_host_magic == PK_HOST_MAGIC;
 }
 
 /* replaces boot_init's call to config_files_init */
@@ -38,7 +38,7 @@ void pk4_boot(void)
         *p = 0;
     for (uint32_t *p = __pk_axi_start; p < __pk_axi_end; p++)
         *p = 0;
-    magic = PK_HOST_MAGIC;
+    pk_host_magic = PK_HOST_MAGIC;
     pk_host_run_inits();
     fw_config_files_init();             /* loads system/device.json (stock) */
     if (pk_mods_schema.count)

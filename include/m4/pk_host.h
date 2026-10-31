@@ -27,6 +27,14 @@
 
 int pk_host_booted(void);               /* boot hook ran (guards calls that come earlier) */
 
+/* Hooks registered with h.redirect_call / redirect_branch / replace_word (a function
+ * pointer) chain: a hook continues with PK_NEXT(itself), the next mod's hook or the stock
+ * function, declared with the hook's own prototype:
+ *     uint8_t *PK_NEXT(pk_my_vs)(int track);
+ *     uint8_t *pk_my_vs(int track) { ... return PK_NEXT(pk_my_vs)(track); }
+ * Hooks only run once the host has booted; before that the firmware calls stock. */
+#define PK_NEXT(hook)   pk_next_##hook
+
 #define PK_FX_NF        ((int)CONST_fx_block_frames)   /* stereo frames per block, L used */
 #define PK_FX_BUF_LEN   16384
 extern int16_t pk_fx_buf[PK_FX_BUF_LEN];               /* 32 KB, owned by the running engine */

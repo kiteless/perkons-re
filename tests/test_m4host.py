@@ -146,3 +146,165 @@ class TestM4Host(unittest.TestCase):
             out.append(fx.process(send))
         self.assertEqual(out[0], out[1])
         self.assertGreater(max(map(abs, out[1])), 300)
+
+
+CHAIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm4host_chain.c')
+SITE = 'fx_lfo.call_led_pwm'
+
+
+@unittest.skipUnless(shutil.which('arm-none-eabi-gcc'), 'arm-none-eabi-gcc not installed')
+class TestChains(unittest.TestCase):
+    """Several mods on one hook point: chained in order, stock until boot, events."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stock = Image.load(require_image('v1.3.0'))
+        cls.s4, cls.s7 = Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json')), Symbols(SYMBOLS_V130)
+        cls.tmp = tempfile.mkdtemp(prefix='pk-chain-')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def build(self, register):
+        p = Patcher(self.stock)
+        p.symbols = {'m7': self.s7, 'm4': self.s4}
+        p.build_dir = tempfile.mkdtemp(dir=self.tmp)
+        h = m4host.host(p)
+        h.add([CHAIN])
+        register(h)
+        return p.result(), p.cave_symbols['m4host']
+
+    def run_site(self, img, s, boot=True):
+        """The hooked call at SITE, as the firmware makes it: returns (log, pwm reaching stock)."""
+        e = M4Emu(img.segment('m4').data, self.s4, img.segment('m7').data, sd={}).boot()
+        if boot:
+            e.call(s['pk4_boot'], max_insns=50_000_000)
+        got = []
+        e.stub(self.s4.fn['fx_lfo_led_pwm'], lambda emu, pwm, *_: got.append(pwm))
+        site = self.s4.site(SITE)['addr']
+        seg = img.segment('m4')
+        off = struct.unpack('<HH', seg.data[site - seg.addr:site - seg.addr + 4])
+        target = _bl_target(site, *off)
+        e.call(target, 100, max_insns=1_000_000)
+        n = e.r32(s['pk_chain_n'])
+        return [e.r32(s['pk_chain_log'] + 4 * i) for i in range(n)], got
+
+    def test_two_hooks_chain_in_order(self):
+        img, s = self.build(lambda h: (h.redirect_call(SITE, 'pk_chain_second', 'b'),
+                                       h.redirect_call(SITE, 'pk_chain_first', 'a')))
+        self.assertEqual(self.run_site(img, s), ([1, 2], [111]))
+
+    def test_order_overrides_names(self):
+        img, s = self.build(lambda h: (h.redirect_call(SITE, 'pk_chain_first', 'a', order=1),
+                                       h.redirect_call(SITE, 'pk_chain_second', 'b')))
+        self.assertEqual(self.run_site(img, s), ([2, 1], [111]))
+
+    def both(self, h):
+        h.redirect_call(SITE, 'pk_chain_first', 'a')
+        h.redirect_call(SITE, 'pk_chain_second', 'b')
+
+    def test_stock_until_booted(self):
+        img, s = self.build(self.both)
+        log, got = self.run_site(img, s, boot=False)
+        self.assertEqual(got, [100])                               # straight to stock
+
+    def test_events_call_subscribers_then_stock(self):
+        img, s = self.build(lambda h: (self.both(h), h.on('track_clear', 'pk_chain_cleared')))
+        e = M4Emu(img.segment('m4').data, self.s4, img.segment('m7').data, sd={}).boot()
+        e.call(s['pk4_boot'], max_insns=50_000_000)
+        got = []
+        e.stub(self.s4.fn['track_clear'], lambda emu, vs, *_: got.append(vs))
+        e.call(s['pk_ev_track_clear'], 0x1234, max_insns=1_000_000)
+        self.assertEqual((e.r32(s['pk_chain_n']), e.r32(s['pk_chain_log']), got), (1, 3, [0x1234]))
+
+    def test_unregistered_hook_with_pk_next_explained(self):
+        with self.assertRaisesRegex(m4host.HostError, 'pk_chain_second'):
+            self.build(lambda h: h.redirect_call(SITE, 'pk_chain_first', 'a'))
+
+    def test_unknown_event_refused(self):
+        with self.assertRaises(m4host.HostError):
+            self.build(lambda h: h.on('no_such_event', 'pk_chain_cleared'))
+
+    def test_same_hook_with_different_next_refused(self):
+        def reg(h):
+            h.redirect_call(SITE, 'pk_chain_first', 'a')
+            h.redirect_call(SITE, 'pk_chain_second', 'b')
+            h.redirect_call('event.track_clear.08103738', 'pk_chain_first', 'a elsewhere')
+        with self.assertRaises(m4host.HostError):
+            self.build(reg)
+
+
+def _bl_target(src, hw1, hw2):
+    s = (hw1 >> 10) & 1
+    j1, j2 = (hw2 >> 13) & 1, (hw2 >> 11) & 1
+    i1, i2 = 1 - (j1 ^ s), 1 - (j2 ^ s)
+    off = (s << 24) | (i1 << 23) | (i2 << 22) | ((hw1 & 0x3ff) << 12) | ((hw2 & 0x7ff) << 1)
+    if s:
+        off -= 1 << 25
+    return src + 4 + off
+
+
+STORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm4host_store.c')
+
+
+@unittest.skipUnless(shutil.which('arm-none-eabi-gcc'), 'arm-none-eabi-gcc not installed')
+class TestStore(unittest.TestCase):
+    """Mods' per-pattern records in BANKS/NN/PP.PAX (src/m4/host/pk_host_store.c)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stock = Image.load(require_image('v1.3.0'))
+        cls.s4, cls.s7 = Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json')), Symbols(SYMBOLS_V130)
+        p = Patcher(cls.stock)
+        p.symbols = {'m7': cls.s7, 'm4': cls.s4}
+        cls.tmp = tempfile.mkdtemp(prefix='pk-store-')
+        p.build_dir = cls.tmp
+        h = m4host.host(p)
+        h.add([STORE])
+        h.store('pattern', 'DEMO', 'pk_st_save', 'pk_st_load')
+        cls.img, cls.s = p.result(), p.cave_symbols['m4host']
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def emu(self, sd=None):
+        e = M4Emu(self.img.segment('m4').data, self.s4, self.img.segment('m7').data, sd=sd or {}).boot()
+        e.call(self.s['pk4_boot'], max_insns=50_000_000)
+        for f in ('pat_save', 'pat_clear', 'bank_prepare'):
+            e.stub(self.s4.fn[f], lambda *a: 0)            # the stock part: not under test
+        return e
+
+    def test_save_writes_a_record_and_bank_load_hands_it_back(self):
+        e = self.emu()
+        e.call(self.s['pk4_store_pat_save'], 0, 2, 5, max_insns=5_000_000)
+        pax = e.sd_written['banks/02/05.pax']
+        self.assertEqual(pax, b'PKX1DEMO' + struct.pack('<I', 2) + bytes([0x25, 0x5a]))
+        foreign = b'PKX1' + b'XXXX' + struct.pack('<I', 3) + b'abc' + pax[4:]
+        e2 = self.emu({'BANKS/02/05.PAX': pax, 'BANKS/02/06.PAX': foreign})
+        e2.call(self.s['pk4_store_bank_load'], 2, max_insns=200_000_000)
+        got = [e2.r8(self.s['pk_st_loaded'] + i) for i in (4, 5, 6)]
+        self.assertEqual(got, [0xee, 0x25, 0x25])          # none, own, own after a foreign record
+
+    def test_nothing_to_keep_no_file(self):
+        e = self.emu({'BANKS/00/09.PAX': b'PKX1old!'})
+        e.call(self.s['pk4_store_pat_save'], 0, 0, 9, max_insns=5_000_000)
+        self.assertNotIn('banks/00/09.pax', e.sd)
+
+    def test_clear_deletes_and_reports_none(self):
+        e = self.emu()
+        e.call(self.s['pk4_store_pat_save'], 0, 1, 3, max_insns=5_000_000)
+        e.call(self.s['pk4_store_pat_clear'], 1, 3, max_insns=5_000_000)
+        self.assertNotIn('banks/01/03.pax', e.sd)
+        self.assertEqual(e.r8(self.s['pk_st_loaded'] + 3), 0xee)
+
+    def test_bad_tags_refused(self):
+        p = Patcher(self.stock)
+        p.symbols = {'m7': self.s7, 'm4': self.s4}
+        h = m4host.host(p)
+        with self.assertRaises(m4host.HostError):
+            h.store('pattern', 'TOOLONG', 'a', 'b')
+        h.store('kit', 'ABCD', 'a', 'b')
+        with self.assertRaises(m4host.HostError):
+            h.store('kit', 'ABCD', 'c', 'd')
