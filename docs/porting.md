@@ -24,7 +24,7 @@ make check-symbols IMG=perkons_vX.Y.Z-0-force.img VER=vX.Y.Z
 make build IMG=perkons_vX.Y.Z-0-force.img SYMS=symbols/vX.Y.Z-m7.json PATCHES=...
 ```
 
-Then the usual hardware steps: `tag_build` first, then the mod (see process.md).
+Then the usual hardware steps: `tag_build` first, then the mod, one change at a time.
 
 ## How the porter works (`tools/perkons/port.py`, `probes.py`)
 
@@ -53,33 +53,15 @@ neighbour) are created on demand by decoding from the entry point.
 * sites and main_points: aligned instruction in the matched function, else a coarse
   instruction window searched inside the counterpart function, else across the image.
   A site is **rejected** unless the instruction there is what the site promises
-  (`bl <fn>`, exact bytes, literal value), so a wrong site can't slip through.
+  (`bl <fn>`, the instruction text, the literal's symbol expression), so a wrong site can't slip through.
 
 **Probes** (`probes.py`) then *measure* what the emulator can observe instead of trusting
-the guesses: the slots array, `params`, `cVoice.*` offsets (call each setter, see which
-byte changes), sub-object offsets (find their vtable pointers), P2-config and
-sample-pointer offsets (send the real config messages through `main`), slot extents.
+the guesses: struct offsets and layout facts the symbols need, found by running the
+firmware's own code and watching what it changes.
 
 **Checks** (`symcheck.py`, `make check-symbols`) are the acceptance test: each runs
-firmware code in the emulator and verifies the effect: wiring produces the four voice
-classes, setters change the right byte, every voice renders, `main` runs from its entry
-and handles messages, the M4 IPC/JSON/snprintf work, every patch site holds what it should.
-
-## Rehearsal on real version differences
-
-Porting the hand-made 1.3.0 symbols *backwards* exercises the porter against real
-compiler and code changes (1.3.0 was built with GCC 15, 1.2.1 with GCC 12):
-
-| port | checks | what fails, and why |
-|---|---|---|
-| 1.3.0 → 1.3.0 | 14/14 | n/a (reproduces every value exactly) |
-| 1.3.0 → 1.2.1 | 11/14 | runtime sample loading + the patch sites that hook it: 1.2.1 has no per-bank samples |
-| 1.3.0 → 1.1.1 | 10/14 | the same, plus "Sampler P2 config", which 1.1.1 doesn't have |
-| 1.3.0 → 1.2.2 | 11/14 | as 1.2.1 (bug-fix release of 1.2). First port to a release the tooling had never seen: 12 s, P2-config offset found by probe at +0x2c59 |
-
-Along the way the probes caught real layout changes the matcher alone would have got
-wrong (`slots` at 0x200001e0 in 1.1.1, `params` and the voice-4 sub-objects moved in
-1.2.1). `tests/test_port.py` keeps the self-port and the 1.2.1 port honest.
+firmware code in the emulator and verifies the effect the symbols promise, and that
+every patch site holds what it should.
 
 ## When the porter can't help
 

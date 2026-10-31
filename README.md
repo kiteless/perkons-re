@@ -6,7 +6,8 @@ an emulator, and build patched firmware (byte patches or C code) with automatic
 regression checks against stock.
 
 > Unofficial. Not affiliated with Erica Synths. Flashing modified firmware is at your
-> own risk; read [docs/process.md](docs/process.md) first (flashing, recovery, safety).
+> own risk; read [Get modded firmware](#get-modded-firmware) first (flashing and going back
+> to the official firmware).
 > No firmware binaries are distributed here: bring the official update files.
 
 **Just want modded firmware for your Pērkons?** Follow [Get modded firmware](#get-modded-firmware)
@@ -83,21 +84,24 @@ Next time, just run step 3 again (in the `perkons-re` folder).
    on. Let go when the first row of steps starts lighting; rows light 1 → 3 → 2 → 4, then
    the Pērkons starts.
 3. Check it worked: `INFO.TXT` on the card now shows a tag after the version, e.g.
-   `1.3.0 - mm-vmzb`. Plain `1.3.0 - gd5b5810` means the official firmware is still on it.
+   `1.3.0 - mm-vmsl`. Plain `1.3.0 - gd5b5810` means the official firmware is still on it.
 
 ### 6. Use the mods
 
 Each mod's page says how to use it:
 [voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
-[Zibens](https://github.com/kiteless/perkons-re-mods/tree/main/zibens),
+[voice-slinks](https://github.com/kiteless/perkons-re-mods/tree/main/voice-slinks),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
-[8 tracks](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes).
+[eight-lanes](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes),
+[per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo).
 
 ### Going back to the official firmware
 
 Flash the official `perkons_v1.3.0-0-force.img` the same way (step 5). Do this before
-any warranty service. More on flashing and recovery: [docs/process.md](docs/process.md).
+any warranty service. If a unit doesn't start after flashing a modified image, flash the
+official image the same way: the update mode lives in the unit's bootloader, which no
+build touches.
 
 > A firmware file you build contains Erica Synths' firmware: it's for your own Pērkons,
 > please don't share it. Modified firmware is used at your own risk.
@@ -120,11 +124,9 @@ any warranty service. More on flashing and recovery: [docs/process.md](docs/proc
 | `tools/modmatrix.py`, `ui/modmatrix/` | **Mod Matrix**: pick mods with checkboxes, build modded firmware from your own official image in the browser |
 | `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
-| `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the unreferenced AXI SRAM gets overwritten) |
+| `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the STORE area stays untouched) |
 | `symbols/` | per-version functions, globals, struct offsets and named patch sites; the only place addresses live (read by the emulator, C builds, patches and Ghidra) |
 | `ghidra/` | headless import + analysis, decompile, and "who references X" query scripts |
-| `docs/architecture.md` | what the firmware looks like inside (both cores, IPC, voice engine, banks/JSON, FX) |
-| `docs/process.md` | the RE → patch → emulate → hardware workflow; flashing, recovery and safety |
 | `docs/porting.md` | moving mods to a new official firmware: symbol porter, probes, checks, rehearsal results |
 | `docs/writing-mods.md` | making a new mod, step by step |
 
@@ -190,7 +192,7 @@ hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the 
 `--no-browser`, `--no-intro`.
 
 The **MEMORY** pane shows the RAM mods can use, in three areas: **MAIN** (M4 patch RAM,
-64 KB), **VOICE** (M7 RAM, 76 KB) and **STORE** (AXI SRAM, 111 KB). After an image is
+64 KB), **VOICE** (M7 RAM, 76 KB) and **STORE** (more M4 RAM, 111 KB). After an image is
 loaded it builds each option alone to see what it takes; the meters follow the ticks, and
 a mod that wouldn't fit can't be ticked (`tools/perkons/ram.py`).
 
