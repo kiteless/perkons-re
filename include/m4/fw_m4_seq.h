@@ -116,7 +116,12 @@
 #define FW_LFO_STORED       0x28    /* -> the kit's {rate, wave, level, sync}; pot catch */
 #define FW_LFO_CATCH        0x2c    /* bit 0 rate, 1 wave, 2 level: hold the stored value */
 
+/* ---- tempo (SYM_tempo_state) ---------------------------------------------------------- */
+#define FW_TEMPO_BPM        0x00    /* float: the tempo set by the knob, the tempo page or tap */
+#define FW_SWITCH_NEW       0x04    /* SYM_switch_record + 4: the pattern header just switched to */
+
 /* ---- device_config bytes (SYM_device_config) ---------------------------------------- */
+#define FW_DC_CLOCK_SRC     0x00    /* 0 internal, 1 analog, 2 MIDI */
 #define FW_DC_POT_CATCH     0x04
 #define FW_DC_SEQ_OUT       0x19
 #define FW_DC_MULTI         0x1d    /* MIDI: 0 single channel, 1 multi */
@@ -140,5 +145,6 @@
 #define fw_store_values     FW_CALL(SYM_store_values, void (*)(uint8_t *locks))
 #define fw_voice_play       FW_CALL(SYM_voice_play, void (*)(int voice, int on, int note, int vel))
 #define fw_trig_active      FW_CALL(SYM_trig_active, int (*)(int track))
+#define fw_tempo_set        FW_CALL(SYM_tempo_set, void (*)(float bpm))   /* as the tempo page: arms the knob's catch */
 
 #define FW_FA_READ          0x01u

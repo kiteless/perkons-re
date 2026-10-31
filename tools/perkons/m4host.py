@@ -59,6 +59,7 @@ EVENTS = {
     'track_clear': 'a track is cleared (CLEAR + trigger)',
     'automation_clear': "a track's automation is cleared (SHIFT + CLEAR + trigger)",
     'pattern_clear': 'a pattern is cleared (PATTERN page: CLEAR + step)',
+    'pattern_switched': 'the playing pattern changed (queued, chained, chosen on the PATTERN page, a bank load)',
 }
 
 

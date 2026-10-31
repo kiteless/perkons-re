@@ -130,7 +130,12 @@
     "analog_out": "0x08107370",
     "filter_out": "0x081075cc",
     "analog_flush": "0x0810759c",
-    "apply_mode": "0x081040c8"
+    "apply_mode": "0x081040c8",
+    "pat_switch_flag": "0x0810db80",
+    "seq_switch_now": "0x0810daf4",
+    "tempo_set": "0x0810298c",
+    "tempo_knob": "0x08102854",
+    "tempo_tap": "0x0810294c"
   },
   "globals": {
     "ipc_streams": "0x38000000",
@@ -173,7 +178,8 @@
     "roll_periods": "0x08127838",
     "roll_gates": "0x08127828",
     "mod_lfo": "0x1000014c",
-    "knobs_ptr": "0x1002e268"
+    "knobs_ptr": "0x1002e268",
+    "tempo_state": "0x1000067c"
   },
   "ipc": {
     "desc": "0x38000000",
@@ -367,6 +373,12 @@
     "kits.save.08105cd4": {
       "addr": "0x08105cd4",
       "call": "kit_save"
+    },
+    "event.pattern_switched.08101b3c": {
+      "addr": "0x08101b3c",
+      "call": "pat_switch_flag",
+      "branch": true,
+      "_note": "switch done (main loop), only when the playing pattern changed: tail call; switch_record+4 = the new pattern header"
     }
   },
   "_struct_fx_bbd_state": {

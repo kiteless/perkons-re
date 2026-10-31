@@ -128,7 +128,8 @@ def apply(p, arg=None):
     h.store('pattern', 'MYMD', 'pk_my_save', 'pk_my_load')   # per-pattern data, sidecar file
 ```
 
-Events (`m4host.EVENTS`): `track_clear`, `automation_clear`, `pattern_clear`; each is the
+Events (`m4host.EVENTS`): `track_clear`, `automation_clear`, `pattern_clear`,
+`pattern_switched` (after the playing pattern changed); each is the
 framework's `event.<name>.*` sites. **Per-pattern and per-kit data** (`h.store('pattern' |
 'kit', tag, save, load)`) lives in sidecar files beside the stock ones, which stay stock:
 `BANKS/NN/PP.PAX` and `BANKS/NN/KITS/PP.KIX`, one record per mod (`"PKX1"`, then `{tag[4],
@@ -153,8 +154,9 @@ writes): send it a config message. FX mods override weak hooks (`pk_fx_engine`, 
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 32 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
 
-Config keys in use: **row 3 step 15 (key 46)** fx-reverb, **step 16 (key 47)** fx-freeze.
-Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–14; row 4 steps 2–14.
+Config keys in use: **row 3 step 14 (key 45)** pattern-bpm, **step 15 (key 46)** fx-reverb,
+**step 16 (key 47)** fx-freeze.
+Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–13; row 4 steps 2–14.
 Clashing keys or setting names fail the build. Toggles are saved in `system/mods.json`,
 never in the stock `device.json`: new settings go in new files, so deleting them gives
 stock behaviour.
@@ -250,7 +252,7 @@ write WAVs to `out/` (gitignored) to listen before hardware.
 }
 ```
 
-`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, sl, et, lf). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
+`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, sl, et, lf, pb). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
 them along). Only list user-facing options; development patches stay out. `make ui` to check it appears.
 
 Give the mod a user-facing `README.md`: what it does, how to use it, and a "Getting it"
