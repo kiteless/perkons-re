@@ -167,7 +167,7 @@
     },
     "main.store_p2cfg": {
       "addr": "0x08027d30",
-      "bytes": "82f86d3c",
+      "insn": "strb.w r3, [r2, #0xc6d]",
       "_note": "strb.w r3, [r2, #0xc6d]: r2 = slots[3]+0x2000, r3 = value"
     },
     "cFourthSlot_render.call_sampler_render": {
@@ -180,7 +180,7 @@
     },
     "sbrk.limit_literal": {
       "addr": "0x0802870c",
-      "word": "0x20020000",
+      "word": "stack_top",
       "_note": "heap limit = this - min_stack"
     }
   }

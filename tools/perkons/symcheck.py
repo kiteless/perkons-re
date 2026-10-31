@@ -165,8 +165,9 @@ def sites(img, sym, seg):
             branch = bool(s.get('branch'))
             need(cur == thumb_bl(s['addr'], sym.fn[s['call']], link=not branch),
                  f'{name}: not {"b.w" if branch else "bl"} {s["call"]}')
-        elif 'bytes' in s:
-            need(s_img.data[off:off + len(s['bytes'])] == s['bytes'], f'{name}: bytes differ')
+        elif 'insn' in s:
+            from .insn import expect
+            need(expect(s_img.data, s_img.addr, s['addr'], s['insn']) is not None, f'{name}: not "{s["insn"]}"')
         elif 'word' in s:
             need(struct.unpack('<I', cur)[0] == s['word'], f'{name}: literal {cur.hex()}')
     return f'{len(sym.sites)} sites'

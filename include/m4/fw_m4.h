@@ -6,6 +6,8 @@
 
 #define FW_CALL(sym, type)  ((type)((uintptr_t)(sym) | 1u))
 
+#include "fw_m4_seq.h"      /* panel, sequencer, patterns, the modulation LFO */
+
 /* firmware's schema-driven JSON loader; see symbols/v1.3.0-m4.json "_json_schema_format" */
 typedef struct {
     const char *key;

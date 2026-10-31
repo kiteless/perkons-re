@@ -43,10 +43,37 @@ def _h(v):
     return int(v, 0) if isinstance(v, str) else v   # "0x.." hex, otherwise decimal
 
 
+class SymbolError(Exception):
+    pass
+
+
+def _merge(raw, extra, where):
+    for sec, table in extra.items():
+        if sec.startswith('_') or not isinstance(table, dict):
+            continue
+        dst = raw.setdefault(sec, {})
+        for k, v in table.items():
+            if k.startswith('_'):
+                continue
+            if k in dst and dst[k] != v:
+                raise SymbolError(f'{where}: {sec}.{k} = {v} clashes with {dst[k]}')
+            dst[k] = v
+
+
 class Symbols:
-    def __init__(self, path):
+    def __init__(self, path, overlays=None):
+        """path: the framework's symbols file; overlays: mods' symbol files for the same
+        version and core (their hook sites), by default every one in PERKONS_MODS
+        (perkons.mods.symbol_overlays). An overlay may add names, never change one."""
         with open(path) as f:
             self.raw = json.load(f)
+        if overlays is None:
+            from .mods import symbol_overlays
+            overlays = symbol_overlays(path)
+        self.overlays = list(overlays)
+        for o in self.overlays:
+            with open(o) as f:
+                _merge(self.raw, json.load(f), o)
         self.base = _h(self.raw['segment_base'])
         # keys starting with '_' are comments/notes, not addresses
         self.mem = {k: _h(v) for k, v in self.raw['memory'].items() if not k.startswith('_')}
@@ -65,17 +92,17 @@ class Symbols:
         if name.startswith('0x'):
             v = int(name, 16)
         else:
-            v = self.fn[name] if name in self.fn else self.g[name]
+            v = self.fn[name] if name in self.fn else self.g[name] if name in self.g else self.mem[name]
         return (v + (int(add, 0) if add else 0)) | (1 if thumb else 0)
 
     def site(self, name):
-        """A named patch point: {'addr': int, and 'call': fn name | 'bytes': bytes | 'word': int}."""
+        """A named patch point: {'addr': int, and 'call': fn name | 'insn': the instruction
+        text there (perkons.insn; its bytes come from the image) | 'word': int, a literal
+        given as an expression over the symbols, e.g. 'seq_tick|1' (see expr)}."""
         s = dict(self.sites[name])
         s['addr'] = _h(s['addr'])
-        if 'bytes' in s:
-            s['bytes'] = bytes.fromhex(s['bytes'])
         if 'word' in s:
-            s['word'] = _h(s['word'])
+            s['word'] = self.expr(s['word'])
         return s
 
 
@@ -394,9 +421,11 @@ class M4Emu(CoreEmu):
     def __init__(self, m4_bin: bytes, symbols: Symbols, m7_bin: bytes = None, sd=None, **kw):
         super().__init__(m4_bin, symbols, m7_bin, **kw)
         self.sd = {self._norm(k): v for k, v in (sd or {}).items()}
+        self.sd_names = {self._norm(k): k.replace('\\', '/').lstrip('/') for k in (sd or {})}   # as written
         self.sd_log = []
         self.sd_written = {}
         self._open = {}
+        self._dirs = {}
         f = symbols.fn
         self.stub(f['f_open'], self._f_open)
         self.stub(f['f_read'], self._f_read)
@@ -404,6 +433,10 @@ class M4Emu(CoreEmu):
             self.stub(f['f_write'], self._f_write)
         self.stub(f['f_close'], self._f_close)
         self.stub(f['f_stat'], self._f_stat)
+        for name, fn in (('f_unlink', self._f_unlink), ('f_opendir', self._f_opendir),
+                         ('f_readdir', self._f_readdir), ('f_closedir', self._f_closedir)):
+            if name in f:
+                self.stub(f[name], fn)
         self.ipc = {k: _h(v) for k, v in symbols.raw['ipc'].items() if not k.startswith('_')}
 
     @staticmethod
@@ -420,6 +453,7 @@ class M4Emu(CoreEmu):
         self.sd_log.append(('open', path, mode))
         if mode & 0x02 or mode & 0x08 or mode & 0x10:  # write / create: a new file
             self._open[fp] = [bytearray(), 0, self._norm(path)]
+            self.sd_names.setdefault(self._norm(path), path.replace('\\', '/').split(':')[-1].lstrip('/'))
             return self.FR_OK
         data = self.sd.get(self._norm(path))
         if data is None:
@@ -453,9 +487,60 @@ class M4Emu(CoreEmu):
         self.sd_log.append(('stat', path))
         data = self.sd.get(self._norm(path))
         if data is None:
+            if self._is_dir(self._norm(path)):
+                if fno:
+                    self.w32(fno, 0)
+                    self.w8(fno + 8, 0x10)                # AM_DIR
+                return self.FR_OK
             return self.FR_NO_FILE
         if fno:
             self.w32(fno, len(data))  # FILINFO.fsize
+        return self.FR_OK
+
+    # directories: implied by the files under them (a key ending in '/' marks an empty one)
+    def _is_dir(self, p):
+        p = p.rstrip('/')
+        return p == '' or any(k.startswith(p + '/') for k in self.sd)
+
+    def _f_unlink(self, emu, path_ptr, *_):
+        p = self._norm(self.cstr(path_ptr))
+        self.sd_log.append(('unlink', p))
+        found = self.sd.pop(p, None) is not None
+        self.sd_written.pop(p, None)
+        return self.FR_OK if found else self.FR_NO_FILE
+
+    def _f_opendir(self, emu, dp, path_ptr, *_):
+        p = self._norm(self.cstr(path_ptr)).rstrip('/')
+        self.sd_log.append(('opendir', p))
+        if not self._is_dir(p):
+            return 5                                   # FR_NO_PATH
+        pre = p + '/' if p else ''
+        entries = {}
+        for k in sorted(self.sd):
+            if not k.startswith(pre) or k == pre:
+                continue
+            first, _, rest = k[len(pre):].partition('/')
+            if first:
+                name = self.sd_names.get(k, k)[len(pre):].split('/')[0]
+                entries.setdefault(first, (name, bool(rest), 0 if rest else len(self.sd[k])))
+        self._dirs[dp] = list(entries.values())
+        self.w32(dp, 1)                                # a non-null object (readdir checks it)
+        return self.FR_OK
+
+    def _f_readdir(self, emu, dp, fno, *_):
+        # FatFs FILINFO: fsize +0, fattrib +8, altname +9 (13 B), fname +0x16 (256 B)
+        left = self._dirs.get(dp, [])
+        self.uc.mem_write(fno, bytes(0x16 + 256))
+        if left:
+            name, is_dir, size = left.pop(0)
+            self.w32(fno, size)
+            self.w8(fno + 8, 0x10 if is_dir else 0x20)
+            self.uc.mem_write(fno + 9, name.upper().encode()[:12])
+            self.uc.mem_write(fno + 0x16, name.encode()[:255])
+        return self.FR_OK
+
+    def _f_closedir(self, emu, dp, *_):
+        self._dirs.pop(dp, None)
         return self.FR_OK
 
     def boot(self):

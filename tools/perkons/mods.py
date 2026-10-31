@@ -6,6 +6,8 @@ A mod is a directory with this layout (every part optional except patches/):
     <mod>/src/<core>/         C sources the patches compile
     <mod>/lib/                Python helpers the patches/tests import
     <mod>/tests/test_*.py     run by `make test` alongside the framework tests
+    <mod>/symbols/<ver>-<core>.json   the mod's hook sites (merged into the framework's
+                              symbols by perkons.emu.Symbols; ported with them)
 
 PERKONS_MODS lists mod directories, or directories containing mods, separated by ':'.
 (The Makefile reads it from the environment or from an untracked local.mk.)
@@ -48,3 +50,9 @@ def load_patch(name):
             spec.loader.exec_module(mod)
             return mod
     raise ImportError(f'patch {name!r} not found in patches/ or PERKONS_MODS ({mod_dirs()})')
+
+
+def symbol_overlays(path):
+    """The mods' symbol files that go with framework symbols file `path` (same name)."""
+    name = os.path.basename(path)
+    return [f for f in (os.path.join(d, 'symbols', name) for d in mod_dirs()) if os.path.exists(f)]

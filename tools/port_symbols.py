@@ -5,7 +5,8 @@
 
 Needs both versions imported into Ghidra first (`make ghidra VER=...`), which exports
 the function lists. Writes symbols/<to>-{m4,m7}.json (unless they exist; then
-<to>-*.ported.json), a report ghidra/out/<to>/port-report.md, then runs the behavioural
+<to>-*.ported.json) and each mod's symbols/<to>-*.json (its hook sites, same rule; with --out elsewhere,
+<out>/mods/<mod>/), a report ghidra/out/<to>/port-report.md, then runs the behavioural
 checks (tools/check_symbols.py) against the new image.
 """
 import argparse
@@ -18,6 +19,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 from perkons.emu import Symbols  # noqa: E402
 from perkons.fwimage import Image  # noqa: E402
+from perkons.mods import symbol_overlays  # noqa: E402
+from perkons.insn import expect  # noqa: E402
 from perkons.port import Porter, Program, load_functions, port_symbols  # noqa: E402
 from perkons.probes import probe_m7  # noqa: E402
 from perkons.symcheck import run_all  # noqa: E402
@@ -37,18 +40,31 @@ def verify_sites(raw, seg, rep):
             t = fns.get(s['call'])
             ok = t is not None and cur == thumb_bl(a, t, link=not s.get('branch'))
             why = f'instruction there is not {"b.w" if s.get("branch") else "bl"} {s["call"]}'
-        elif 'bytes' in s:
-            b = bytes.fromhex(s['bytes'])
-            ok = seg.data[a - seg.addr:a - seg.addr + len(b)] == b
-            why = 'instruction bytes differ (inspect: offsets or registers may have changed)'
+        elif 'insn' in s:
+            ok = expect(seg.data, seg.addr, a, s['insn']) is not None
+            why = f'instruction there is not "{s["insn"]}" (inspect: offsets or registers may have changed)'
         elif 'word' in s:
-            ok = int.from_bytes(seg.data[a - seg.addr:a - seg.addr + 4], 'little') == int(s['word'], 16)
+            want = word_value(raw, s['word'])
+            ok = want is not None and int.from_bytes(seg.data[a - seg.addr:a - seg.addr + 4], 'little') == want
             why = 'word there is not the ported value'
         if not ok:
             s['addr'] = None
             for i, r in enumerate(rep):
                 if r[0] == 'sites' and r[1] == k:
                     rep[i] = (r[0], r[1], r[2], None, f'rejected: {why}')
+
+
+def word_value(raw, w):
+    """A site's word: a number, or an expression over the (ported) symbols."""
+    if str(w).startswith('0x'):
+        return int(w, 16)
+    tables = {**raw.get('memory', {}), **raw.get('globals', {}), **raw.get('functions', {})}
+    thumb = w.endswith('|1')
+    name, _, add = w[:-2 if thumb else None].partition('+')
+    v = tables.get(name)
+    if not isinstance(v, str) or not v.startswith('0x'):
+        return None
+    return (int(v, 16) + (int(add, 0) if add else 0)) | (1 if thumb else 0)
 
 
 def find_img(ver):
@@ -84,9 +100,31 @@ def main():
         porter.run()
         with open(os.path.join(a.out, f'{a.src}-{core}.json')) as f:
             old_raw = json.load(f)
+        # the mods' hook sites port with the framework's (they need its memory map), then
+        # go back to their own files
+        owned = {}
+        for o in symbol_overlays(os.path.join(a.out, f'{a.src}-{core}.json')):
+            with open(o) as f:
+                extra = json.load(f)
+            sites = {k: v for k, v in extra.get('sites', {}).items() if not k.startswith('_')}
+            old_raw.setdefault('sites', {}).update(sites)
+            owned[o] = (extra, list(sites))
         rep = []
         new_raw = port_symbols(old_raw, porter, rep)
         verify_sites(new_raw, sn, rep)
+        for o, (extra, keys) in owned.items():
+            mod_raw = dict(extra, sites={k: new_raw['sites'].pop(k) for k in keys})
+            mod_dir = os.path.dirname(o)
+            if os.path.abspath(a.out) != os.path.join(ROOT, 'symbols'):     # e.g. a test run
+                mod_dir = os.path.join(a.out, 'mods', os.path.basename(os.path.dirname(mod_dir)))
+                os.makedirs(mod_dir, exist_ok=True)
+            mod_out = os.path.join(mod_dir, f'{a.dst}-{core}.json')
+            if os.path.exists(mod_out):
+                mod_out = mod_out.replace('.json', '.ported.json')
+            with open(mod_out, 'w') as f:
+                json.dump(mod_raw, f, indent=2, ensure_ascii=False)
+                f.write('\n')
+            print(f'  {len(keys)} sites of {os.path.relpath(o, ROOT)} -> {mod_out}')
         new_raw['_comment'] = (f'PORTED from {a.src} by tools/port_symbols.py; review ghidra/out/{a.dst}/port-report.md. '
                                + str(old_raw.get('_comment', '')))
         out = os.path.join(a.out, f'{a.dst}-{core}.json')

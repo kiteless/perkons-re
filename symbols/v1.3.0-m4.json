@@ -68,7 +68,69 @@
     "cfg_render": "0x08106010",
     "cfg_exit_save": "0x08106518",
     "device_json_save": "0x08104120",
-    "sbrk": "0x081091fc"
+    "sbrk": "0x081091fc",
+    "seq_tick": "0x08101d04",
+    "seq_setup": "0x081019f0",
+    "seq_queue": "0x0810dadc",
+    "pat_save": "0x08102158",
+    "pat_clear": "0x08102208",
+    "pat_switch_done": "0x08101108",
+    "f_unlink": "0x0811e52c",
+    "seq_record": "0x08102fc0",
+    "seq_clear_slot": "0x0810c564",
+    "voice_play": "0x0810210c",
+    "trig_active": "0x08102134",
+    "ui_update": "0x08103b98",
+    "set_mode": "0x08104098",
+    "get_mode": "0x081040a4",
+    "key_held": "0x0810b740",
+    "page0_render": "0x08105504",
+    "steps_held": "0x0810b784",
+    "key_event": "0x08103580",
+    "midi_page_event": "0x0810688c",
+    "midi_page_render": "0x081067b8",
+    "kit_load": "0x081023d8",
+    "kit_save": "0x08102284",
+    "midi_dispatch": "0x0810443c",
+    "midi_note_on": "0x0810310c",
+    "midi_note_off": "0x081030d8",
+    "held_first": "0x0810b794",
+    "held_next": "0x0810b7a4",
+    "store_values": "0x0810ca1c",
+    "after_store_values": "0x081097b8",
+    "cc_map": "0x08104310",
+    "mod_values": "0x0810175c",
+    "roll_hold": "0x081029c8",
+    "roll_rate_set": "0x081029dc",
+    "roll_rate_get": "0x081029f0",
+    "pot_moved": "0x08109818",
+    "lfo_update": "0x0810e2fc",
+    "lfo_sync_tick": "0x0810e5a4",
+    "lfo_set_rate": "0x0810e48c",
+    "lfo_set_wave": "0x0810e50c",
+    "lfo_set_level": "0x0810e558",
+    "lfo_sync_toggle": "0x0810e5fc",
+    "lfo_reset": "0x0810e47c",
+    "lfo_out": "0x0810e620",
+    "lfo_sync_get": "0x0810e618",
+    "track_clear": "0x0810d608",
+    "track_auto_clear": "0x0810c62c",
+    "pattern_init": "0x0810d738",
+    "f_opendir": "0x0811e368",
+    "f_readdir": "0x0811e478",
+    "f_closedir": "0x0811e404",
+    "knob_raw": "0x081097e4",
+    "knob_value": "0x081097f4",
+    "knob_delta": "0x081097d0",
+    "lfo_knob_poll": "0x0810147c",
+    "knob_handler": "0x08103d58",
+    "stream1_send": "0x0810114c",
+    "sd_present": "0x0810854c",
+    "dma_copy": "0x0810b8c4",
+    "analog_out": "0x08107370",
+    "filter_out": "0x081075cc",
+    "analog_flush": "0x0810759c",
+    "apply_mode": "0x081040c8"
   },
   "globals": {
     "ipc_streams": "0x38000000",
@@ -95,7 +157,23 @@
     "clock_state": "0x1000068c",
     "cfg_dirty": "0x1002c7e4",
     "cfg_page_table": "0x0812c000",
-    "fx_sync_table": "0x08127e08"
+    "fx_sync_table": "0x08127e08",
+    "seq_ptr": "0x1002e6e4",
+    "seq_notes": "0x1000011c",
+    "track_template": "0x10001864",
+    "pat_headers": "0x100026d0",
+    "pat_blocks": "0x10002ed0",
+    "switch_record": "0x10001d6c",
+    "bank_number": "0x100283cc",
+    "midi_page_multi": "0x1002c7e7",
+    "midi_page_dirty": "0x1002c7e6",
+    "kits": "0x10025ad4",
+    "current_kit": "0x10025ad0",
+    "rec_flags": "0x100284ac",
+    "roll_periods": "0x08127838",
+    "roll_gates": "0x08127828",
+    "mod_lfo": "0x1000014c",
+    "knobs_ptr": "0x1002e268"
   },
   "ipc": {
     "desc": "0x38000000",
@@ -157,12 +235,12 @@
     },
     "fx.fnptr_initial": {
       "addr": "0x0812bf38",
-      "word": "0x08104841",
+      "word": "fx_bbd_process|1",
       "_note": ".data image: initial value of fx_process_fnptr (fx_bbd_process)"
     },
     "fx_set_processor.normal_literal": {
       "addr": "0x08104e80",
-      "word": "0x08104841",
+      "word": "fx_bbd_process|1",
       "_note": "pointer installed for normal (non-test) mode"
     },
     "fx_lfo.call_led_pwm": {
@@ -177,25 +255,25 @@
     },
     "cfg_page.event_word": {
       "addr": "0x0812c000",
-      "word": "0x08106241",
+      "word": "cfg_event|1",
       "_note": ".data image: config page event handler"
     },
     "cfg_page.render_word": {
       "addr": "0x0812c004",
-      "word": "0x08106011",
+      "word": "cfg_render|1",
       "_note": ".data image: config page LED renderer"
     },
     "device_schema.load_literal": {
       "addr": "0x0810424c",
-      "word": "0x08127954"
+      "word": "device_json_schema"
     },
     "device_schema.create_literal": {
       "addr": "0x081042c8",
-      "word": "0x08127954"
+      "word": "device_json_schema"
     },
     "device_schema.save_literal": {
       "addr": "0x08104130",
-      "word": "0x08127954"
+      "word": "device_json_schema"
     },
     "cfg_exit_save.tail_device_json_save": {
       "addr": "0x08106534",
@@ -221,8 +299,74 @@
     },
     "sbrk.limit_literal": {
       "addr": "0x08109238",
-      "word": "0x10048000",
+      "word": "stack_top",
       "_note": "heap limit = this - min_stack (0x400)"
+    },
+    "event.track_clear.08103738": {
+      "addr": "0x08103738",
+      "call": "track_clear",
+      "_note": "key handler: CLEAR + trigger clears the track"
+    },
+    "event.automation_clear.08105814": {
+      "addr": "0x08105814",
+      "call": "track_auto_clear",
+      "_note": "SHIFT page: SHIFT + CLEAR + trigger clears the track's automation"
+    },
+    "event.pattern_clear.0810222c": {
+      "addr": "0x0810222c",
+      "call": "pattern_init",
+      "branch": true,
+      "_note": "pat_clear: tail call b.w pattern_init (PATTERN page: CLEAR + step)"
+    },
+    "patpage.call_save_a": {
+      "addr": "0x08105a72",
+      "call": "pat_save"
+    },
+    "patpage.call_save_b": {
+      "addr": "0x08105ac4",
+      "call": "pat_save"
+    },
+    "patpage.call_clear": {
+      "addr": "0x08105aa8",
+      "call": "pat_clear"
+    },
+    "switch_bank.call_bank_prepare": {
+      "addr": "0x081025b0",
+      "call": "bank_prepare"
+    },
+    "boot_load_last_bank.call_bank_prepare": {
+      "addr": "0x081026b8",
+      "call": "bank_prepare"
+    },
+    "kits.load.0810264a": {
+      "addr": "0x0810264a",
+      "call": "kit_load"
+    },
+    "kits.load.08102742": {
+      "addr": "0x08102742",
+      "call": "kit_load"
+    },
+    "kits.load.08105ca2": {
+      "addr": "0x08105ca2",
+      "call": "kit_load"
+    },
+    "kits.load.08105ce2": {
+      "addr": "0x08105ce2",
+      "call": "kit_load"
+    },
+    "kits.load.08102592": {
+      "addr": "0x08102592",
+      "call": "kit_load",
+      "branch": true,
+      "_note": "pattern-switch callback (kit-link): tail call b.w kit_load"
+    },
+    "kits.save.08105c84": {
+      "addr": "0x08105c84",
+      "call": "kit_save"
+    },
+    "kits.save.08105cd4": {
+      "addr": "0x08105cd4",
+      "call": "kit_save"
     }
   },
   "_struct_fx_bbd_state": {
@@ -251,7 +395,10 @@
     "cfg_key_event": "0x11",
     "fx_block_frames": "16",
     "fx_switch_short_level": "1",
-    "json_buf_size": "0x1000"
+    "json_buf_size": "0x1000",
+    "track_block": "0x22c",
+    "track_state": "0x10c",
+    "note_rec": "0xc"
   },
   "offsets": {
     "_comment": "struct offsets (OFF_<a>_<b>)",

@@ -60,6 +60,19 @@ class TestPort(unittest.TestCase):
                 if not k.startswith('_'):
                     self.assertEqual(int(s['addr'], 16), int(b['sites'][k]['addr'], 16), k)
             self.assertEqual(a.get('slot_extents'), b.get('slot_extents'))
+        # the mods' hook sites port with them, into <out>/mods/<mod>/
+        from perkons.mods import symbol_overlays
+        for c in ('m4', 'm7'):
+            for o in symbol_overlays(os.path.join(ROOT, 'symbols', f'v1.3.0-{c}.json')):
+                mod = os.path.basename(os.path.dirname(os.path.dirname(o)))
+                with open(o) as f:
+                    a = json.load(f)
+                with open(os.path.join(self.tmp, 'mods', mod, f'v1.3.0-{c}.json')) as f:
+                    b = json.load(f)
+                for k, s in a['sites'].items():
+                    if not k.startswith('_'):
+                        with self.subTest(mod=mod, site=k):
+                            self.assertEqual(int(s['addr'], 16), int(b['sites'][k]['addr'], 16))
 
     def test_backport_to_1_2_1(self):
         need_funcs('v1.3.0', 'v1.2.1')

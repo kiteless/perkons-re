@@ -95,7 +95,17 @@ class Patcher:
     # They need self.symbols = {'m4': Symbols, 'm7': Symbols} (tools/build.py sets it).
 
     def site(self, seg, name):
-        return self.symbols[seg].site(name)
+        """A symbols site; an 'insn' site gets 'bytes': the instruction's bytes in the image
+        being patched, once they are checked to be that instruction."""
+        s = self.symbols[seg].site(name)
+        if 'insn' in s:
+            from .insn import expect
+            src = self.img.segment(seg)
+            b = expect(src.data, src.addr, s['addr'], s['insn'])
+            if b is None:
+                raise PatchError(f'{name}: not "{s["insn"]}" at {s["addr"]:08x} (wrong firmware version?)')
+            s['bytes'] = b
+        return s
 
     def redirect_call(self, seg, site, new_target, why):
         """Site is `bl <fn>`: make it `bl new_target`."""

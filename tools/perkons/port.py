@@ -380,6 +380,9 @@ class Porter:
             m = self.map_insn(addr)
             if m:
                 return m[0], f'inside {o:#x}: {m[1]}'
+        m = self._window(addr)      # a function the function lists don't have
+        if m:
+            return m[0], f'not a listed function: {m[1]}'
         return None, 'unmatched'
 
     def map_insn(self, addr):
@@ -428,7 +431,15 @@ class Porter:
             return mn + ' ' + ins.op_str.split(',')[0] + ' PCREL'
         return mn + ' ' + ins.op_str
 
-    def _window(self, addr, before=6, after=6):
+    def _window(self, addr):
+        """Growing windows of normalized instructions around addr, until one is unique."""
+        for n in (6, 10, 16, 24):
+            m = self._window_n(addr, n, n)
+            if m:
+                return m
+        return None
+
+    def _window_n(self, addr, before, after):
         old = self.old
         # find an instruction boundary `before` instructions back by decoding from earlier offsets
         for back in range(2 * before, 4 * before + 2, 2):
@@ -452,11 +463,40 @@ class Porter:
             return self._new_linear[hits[0] + off].address, f'instruction window ({len(pat)} insns, unique)'
         return None
 
+    def _ldr_literal(self, prog, ins):
+        """The literal address an `ldr rX, [pc, #imm]` reads, else None."""
+        if not ins.mnemonic.startswith('ldr') or '[pc' not in ins.op_str:
+            return None
+        imm = ins.op_str.split('#')[-1].rstrip(']') if '#' in ins.op_str else '0'
+        return ((ins.address + 4) & ~3) + int(imm, 0)
+
+    def _pool_via_load(self, addr):
+        """A literal slot nothing aligned: find a load of it in the old code (up to 4 KB
+        before it), port that instruction, and read which slot the new one loads."""
+        old, new = self.old, self.new
+        lo = max(old.base, addr - 0x1000)
+        md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
+        md.skipdata = True          # through other literal pools
+        for ins in md.disasm(old.data[lo - old.base:addr - old.base], lo):
+            if self._ldr_literal(old, ins) == addr:
+                m = self.map_insn(ins.address)
+                if not m:
+                    continue
+                for nins in new.md.disasm(new.data[m[0] - new.base:m[0] - new.base + 4], m[0]):
+                    lit = self._ldr_literal(new, nins)
+                    if lit is not None:
+                        return lit, f'literal loaded at {ins.address:#x} ({m[1]})'
+                    break
+        return None
+
     def map_pool(self, addr):
         v = self.avotes.get(('pool', addr))
         if v:
             (b, c), = v.most_common(1)
             return b, 'aligned literal slot'
+        m = self._pool_via_load(addr)
+        if m:
+            return m
         # the same value in the counterpart function's literal pool
         val = self.old.u32(addr)
         users = [o for o in self.old.entries if any(i.lit_addr == addr for i in self.old.insns[o])]
@@ -586,11 +626,13 @@ def port_symbols(old_sym_raw, porter, report):
         ns = dict(s)
         if 'word' in s:
             m = map_data_word(a) or porter.map_pool(a)
-            nv = map_word_value(_h(s['word']))
-            if m and nv is None:
-                m = (None, 'word value (a pointer) could not be ported')
-            elif nv is not None:
-                ns['word'] = f'{nv:#010x}'
+            if str(s['word']).startswith('0x'):            # a number: port its value too
+                nv = map_word_value(_h(s['word']))
+                if m and nv is None:
+                    m = (None, 'word value (a pointer) could not be ported')
+                elif nv is not None:
+                    ns['word'] = f'{nv:#010x}'
+            # else an expression over symbol names: it ports with them
         else:
             m = porter.map_insn(a)
         ns['addr'] = rec('sites', k, s['addr'], m[0] if m else None, m[1] if m else 'unmatched')
