@@ -82,6 +82,16 @@ public class Query extends GhidraScript {
                 if (t != null) for (Function c : t.getCallingFunctions(monitor)) hit(c, q);
             } else if (q.startsWith("fn:")) {
                 hit(fnByNameOrAddr(q.substring(3)), q);
+            } else if (q.startsWith("mkfn:")) {
+                // code only reached through pointers (page tables, callbacks): make the function
+                // first (the project is read-only, so nothing is saved)
+                Address a = toAddr(Long.decode(q.substring(5)) & ~1L);
+                Function f = getFunctionAt(a);
+                if (f == null) {
+                    disassemble(a);
+                    f = createFunction(a, null);
+                }
+                hit(f, q);
             }
         }
         DecompInterface d = new DecompInterface();
