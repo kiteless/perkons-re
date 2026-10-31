@@ -12,7 +12,7 @@ for p in (os.path.join(ROOT, 'tests'), os.path.join(ROOT, 'tools'), ROOT):
     sys.path.insert(0, p)
 from perkons.mods import add_to_path, mod_dirs  # noqa: E402
 
-FAST = ['test_fwimage', 'test_patch']
+FAST = ['test_fwimage', 'test_patch', 'test_mod_clashes']
 
 
 def main():
