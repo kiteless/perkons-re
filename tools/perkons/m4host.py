@@ -15,6 +15,7 @@ once, so instead of patching them, a mod registers with the host from its apply(
         h.redirect_call('some_fn.call_site', 'pk_my_hook', 'why')   # resolved after the link
         h.on('track_clear', 'pk_my_cleared')               # a framework event: void f(void)
         h.add([...], on_save='pk_my_save')                 # run whenever the settings are saved
+        h.page('my_page', key='pk_my_key', draw='pk_my_draw', leave='pk_my_leave')   # a UI page
 
 When every patch is applied (Patcher.finish / result), the host compiles all registered
 sources with its own (src/m4/host/) in one link, appends the code, and patches each
@@ -32,6 +33,14 @@ no hook runs on power-on garbage. A hook used at several sites must have the sam
 hook at all of them. Events (EVENTS, framework sites named event.<name>.*) are chain
 links that call their subscribers, then go on.
 
+Pages: the firmware's UI is a set of pages (MAIN, SHIFT, MOD, PATTERN, KIT, the config
+menu, ...), each a record of four handlers {key, draw, enter, leave} reached through a
+table of record pointers. A mod adds a page with h.page(): the host builds a copy of the
+table with the mods' pages after the stock ones (PK_PAGE_<NAME>: its number, for
+fw_set_mode) and points the firmware's page code at it. A page gets every key first (its
+key handler returns nonzero when it handled one; the rest go on to the stock handling:
+trigger keys play the voices, page buttons change page) and draws each UI update.
+
 RAM (both zeroed at boot, before the mods' inits):
 * .bss goes in the D2 SRAM gap between the newlib heap and the M7's audio DMA buffer
   (0x10040000); the heap is capped below it by patching _sbrk's limit. Fast: for state
@@ -43,7 +52,7 @@ RAM (both zeroed at boot, before the mods' inits):
 import os
 
 from . import cbuild, hooks
-from .hooks import HostError
+from .hooks import BaseHost, HostError
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST_SRC = os.path.join(ROOT, 'src', 'm4', 'host')
@@ -81,41 +90,27 @@ def host(p):
     return h
 
 
-class Host:
+class Host(BaseHost):
+    core = 'm4'
+
     def __init__(self, p):
-        self.p = p
-        self.sources, self.include_dirs, self.inits, self.savers = [], [], [], []
-        self.defines = {}
-        self.headers = {}                    # generated headers: name -> text or callable
+        super().__init__(p)
+        self.savers = []
         self.toggles = []                    # (config key, json key, var)
         self.settings = []                   # (json key, var): uint8_t numbers in mods.json
         self.use_fx = False
-        self.hooks = []                      # (kind, site, symbol, why, order)
         self.events = {}                     # event -> [subscriber]
         self.stores = {'pattern': [], 'kit': []}   # (tag, save fn, load fn)
-        self.syms = None
+        self.pages = {}                      # name -> (key, draw, enter, leave)
 
     # -- registration (from patch apply) -----------------------------------------------
     def add(self, sources, include_dirs=(), init=None, on_save=None, defines=None, headers=None):
-        """C sources to link; init: a void(void) function run at boot, after .bss is
-        zeroed and before the settings files load; on_save: a void(void) function run
-        whenever the firmware saves its settings, after device.json (and mods.json);
-        defines: {name: value} for every source in the link; headers: {name: text, or a
-        function returning it, called at link time (e.g. built from other mods' registrations)}."""
-        self.sources += [s for s in sources if s not in self.sources]
-        self.include_dirs += [d for d in include_dirs if d not in self.include_dirs]
-        if init and init not in self.inits:
-            self.inits.append(init)
+        """As BaseHost.add (init runs at boot, after .bss is zeroed and before the settings
+        files load); on_save: a void(void) function run whenever the firmware saves its
+        settings, after device.json (and mods.json)."""
+        super().add(sources, include_dirs, init, defines, headers)
         if on_save and on_save not in self.savers:
             self.savers.append(on_save)
-        for k, v in (defines or {}).items():
-            if self.defines.get(k, v) != v:
-                raise HostError(f'define {k}: {v} clashes with {self.defines[k]}')
-            self.defines[k] = v
-        for k, v in (headers or {}).items():
-            if k in self.headers and self.headers[k] is not v:
-                raise HostError(f'generated header {k} registered twice')
-            self.headers[k] = v
 
     def toggle(self, key, json_key, var):
         """On/off setting: config-page key (LED shows it), a bool in system/mods.json, uint8_t var."""
@@ -135,19 +130,6 @@ class Host:
     def fx(self):
         self.use_fx = True
 
-    def redirect_call(self, site, symbol, why, order=0):
-        """Site is `bl <fn>`: the call goes to `symbol` (chained with other mods' hooks)."""
-        self.hooks.append(('call', site, symbol, why, order))
-
-    def redirect_branch(self, site, symbol, why, order=0):
-        """Site is a tail call `b.w <fn>`: it goes to `symbol` (chained)."""
-        self.hooks.append(('branch', site, symbol, why, order))
-
-    def replace_word(self, site, symbol, why, order=0):
-        """Site is a literal: a function pointer (odd) is chained like a call; a data
-        pointer is replaced outright (one mod only)."""
-        self.hooks.append(('word', site, symbol, why, order))
-
     def store(self, kind, tag, save, load):
         """Per-pattern or per-kit data in sidecar files (src/m4/host/pk_host_store.c):
         kind 'pattern' (BANKS/NN/PP.PAX) or 'kit' (BANKS/NN/KITS/PP.KIX); tag: 4 characters,
@@ -164,6 +146,23 @@ class Host:
                 if k == kind and t == tag:
                     raise HostError(f'{kind} store tag {tag} used twice')
         self.stores[kind].append((tag, save, load))
+
+    def page(self, name, key, draw, enter=None, leave=None):
+        """A UI page of its own: PK_PAGE_<NAME> (upper case) is its number, for fw_set_mode.
+        key: `int f(const uint8_t *evt)` (evt[0] the key, evt[1] FW_EV_DOWN / FW_EV_UP),
+        nonzero when it handled the key, else the stock handling has it; draw: `void
+        f(void)`, sets the page's LEDs each UI update; enter / leave: `void f(void)`, run
+        when the page is entered / left (optional)."""
+        if not name.isidentifier():
+            raise HostError(f'page name {name!r}: a C identifier')
+        if name in self.pages and self.pages[name] != (key, draw, enter, leave):
+            raise HostError(f'page {name} registered twice')
+        self.pages[name] = (key, draw, enter, leave)
+
+    def page_numbers(self):
+        """{name: page number}: the mods' pages after the stock ones, in name order."""
+        first = self.p.symbols['m4'].const['page_count']
+        return {n: first + i for i, n in enumerate(sorted(self.pages))}
 
     def on(self, event, fn):
         """Call `void fn(void)` when the firmware does `event` (EVENTS), before it does it."""
@@ -197,6 +196,20 @@ class Host:
                 or '{{0}, 0, 0}'
             lines += [f'const pk_store_t pk_store_{kind}[] = {{{rows}}};',
                       f'const int pk_n_store_{kind} = {len(entries)};']
+        if self.pages:
+            sym = self.p.symbols['m4']
+            n = sym.const['page_count']
+            stock = self.p.read('m4', sym.g['page_table'], 4 * n)
+            lines.append('typedef struct { void *key, *draw, *enter, *leave; } pk_page_t;')
+            fns = sorted({f for hs in self.pages.values() for f in hs if f})
+            lines += [f'extern char {f}[];' for f in fns]
+            for name in sorted(self.pages):
+                lines.append(f'static const pk_page_t pk_page_{name} = {{'
+                             + ', '.join(f or '0' for f in self.pages[name]) + '};')
+            rows = [f'(const void *)0x{int.from_bytes(stock[4 * i:4 * i + 4], "little"):08x}' for i in range(n)]
+            rows += [f'&pk_page_{name}' for name in sorted(self.pages)]
+            lines.append('__attribute__((section(".text.pk_page_table")))     /* kept: the firmware reads it */')
+            lines.append(f'const void *const pk_page_table[{len(rows)}] = {{{", ".join(rows)}}};')
         lines += [f'void {f}(void);' for f in self.inits + self.savers]
         lines.append('void pk_host_run_inits(void) {' + ''.join(f' {f}();' for f in self.inits) + ' }')
         lines.append('void pk_host_run_savers(void) {' + ''.join(f' {f}();' for f in self.savers) + ' }')
@@ -218,6 +231,14 @@ class Host:
                 self.redirect_call(site, 'pk4_store_bank_load', 'bank load: mods\' sidecar records', order=-2000)
             for site in sorted(k for k in self.p.symbols['m4'].sites if k.startswith('kits.save.')):
                 self.redirect_call(site, 'pk4_store_kit_save', 'kit save: mods\' sidecar records', order=-2000)
+        if self.toggles:                    # chained: mods can take the config page over
+            self.replace_word('cfg_page.event_word', 'pk4_cfg_event', 'config page events: toggles', order=1000)
+            self.replace_word('cfg_page.render_word', 'pk4_cfg_render', 'config page LEDs: toggles', order=1000)
+        if self.pages:                      # the firmware's page code reads the extended table
+            for site in ('pages.draw_table_lit', 'pages.apply_table_lit', 'pages.key_table_lit'):
+                self.replace_word(site, 'pk_page_table', 'page table: stock pages + the mods\' pages')
+            for name, num in self.page_numbers().items():
+                self.defines[f'PK_PAGE_{name.upper()}'] = num
         from .m7host import message_defines
         self.defines.update(message_defines(p))     # M7 config message types: PK_MSG_<NAME>
         sym4 = self.p.symbols['m4']
@@ -228,26 +249,14 @@ class Host:
         srcs = [os.path.join(HOST_SRC, 'pk_host.c')]
         if self.stores['pattern'] or self.stores['kit']:
             srcs.append(os.path.join(HOST_SRC, 'pk_host_store.c'))
+        if self.toggles:
+            srcs.append(os.path.join(HOST_SRC, 'pk_host_cfg.c'))
         if self.use_fx:
             srcs += [os.path.join(HOST_SRC, 'pk_host_fx.c'), os.path.join(HOST_SRC, 'pk_host_fx_defaults.c')]
         origin = p.cave_origin('m4')
         lo, hi = axi_gap(sym)
-        try:
-            blob, self.syms = cbuild.build('m4', srcs + self.sources, self.include_dirs,
-                                           os.path.join(p.build_dir, 'm4host'), origin, 'pk4_boot', sym,
-                                           ram=(RAM_BASE, RAM_END - RAM_BASE), axi=(lo, hi - lo),
-                                           defines=self.defines,
-                                           extra_headers={k: v() if callable(v) else v
-                                                          for k, v in sorted(self.headers.items())},
-                                           extra_sources={'pk_host_gen.c': self.gen_source(),
-                                                          'pk_host_chains.c': hooks.gen_source(
-                                                              chains, nxt, self.events, 'pk_host_magic', PK_HOST_MAGIC)})
-        except cbuild.BuildError as e:
-            unreg = hooks.unregistered(e)
-            if unreg:
-                raise HostError(f'{", ".join(unreg)}: call PK_NEXT but are not registered as hooks '
-                                '(h.redirect_call / redirect_branch / replace_word)') from None
-            raise
+        blob = self.link('pk_host', srcs, 'pk4_boot', self.gen_source(), chains, nxt, self.events,
+                         'pk_host_magic', PK_HOST_MAGIC, ram=(RAM_BASE, RAM_END - RAM_BASE), axi=(lo, hi - lo))
         for v in [v for _, _, v in self.toggles] + [v for _, v in self.settings]:
             if v not in self.syms:
                 raise HostError(f'setting variable {v} is not defined (uint8_t {v}; in a mod source)')
@@ -265,9 +274,6 @@ class Host:
             for site in SAVE_SITES:
                 p.redirect_branch('m4', site, s['pk4_device_json_save'],
                                   f'{site.split(".")[0]}: save device.json, then the mods\' settings')
-        if self.toggles:
-            p.replace_word('m4', 'cfg_page.event_word', s['pk4_cfg_event'] | 1, 'config page events -> toggles')
-            p.replace_word('m4', 'cfg_page.render_word', s['pk4_cfg_render'] | 1, 'config page LEDs -> toggles')
         if self.use_fx:
             proc = s['pk4_fx_process'] | 1
             p.replace_word('m4', 'fx.fnptr_initial', proc, 'FX process pointer (initial) -> pk4_fx_process')

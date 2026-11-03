@@ -84,6 +84,7 @@
     "set_mode": "0x08104098",
     "get_mode": "0x081040a4",
     "key_held": "0x0810b740",
+    "key_held_ms": "0x0810b758",
     "page0_render": "0x08105504",
     "steps_held": "0x0810b784",
     "key_event": "0x08103580",
@@ -131,6 +132,10 @@
     "filter_out": "0x081075cc",
     "analog_flush": "0x0810759c",
     "apply_mode": "0x081040c8",
+    "page_draw": "0x081040b0",
+    "midi_in_init": "0x08104410",
+    "midi_in_channel": "0x081045b8",
+    "page_key": "0x08104108",
     "pat_switch_flag": "0x0810db80",
     "seq_switch_now": "0x0810daf4",
     "tempo_set": "0x0810298c",
@@ -162,9 +167,16 @@
     "clock_state": "0x1000068c",
     "cfg_dirty": "0x1002c7e4",
     "cfg_page_table": "0x0812c000",
+    "page_table": "0x08127910",
     "fx_sync_table": "0x08127e08",
     "seq_ptr": "0x1002e6e4",
+    "subtick_timer_ptr": "0x1002e270",
+    "midi_channels": "0x10000730",
+    "midi_callbacks": "0x10000758",
     "seq_notes": "0x1000011c",
+    "pending_triggers": "0x10001d44",
+    "kit_save_flash": "0x1002c7dc",
+    "pat_save_flash": "0x1002c756",
     "track_template": "0x10001864",
     "pat_headers": "0x100026d0",
     "pat_blocks": "0x10002ed0",
@@ -258,6 +270,31 @@
       "addr": "0x08104b88",
       "call": "hal_gpio_read",
       "_note": "HAL_GPIO_ReadPin(GPIOE, 1): the SHORT/LONG switch"
+    },
+    "main.call_switch_done": {
+      "addr": "0x08100f0c",
+      "call": "pat_switch_done",
+      "_note": "main loop: revert the pattern left / snapshot the new one"
+    },
+    "keys.handler_lit": {
+      "addr": "0x08103b84",
+      "word": "key_event|1",
+      "_note": "the key event handler registered at init (mods chain key combos here)"
+    },
+    "pages.draw_table_lit": {
+      "addr": "0x081040c4",
+      "word": "page_table",
+      "_note": "page_draw: the page table (current page's record +4: draw)"
+    },
+    "pages.apply_table_lit": {
+      "addr": "0x08104104",
+      "word": "page_table",
+      "_note": "apply_mode: the page table (record +8 enter, +0xc leave)"
+    },
+    "pages.key_table_lit": {
+      "addr": "0x0810411c",
+      "word": "page_table",
+      "_note": "page_key: the page table (record +0: key event, nonzero = handled)"
     },
     "cfg_page.event_word": {
       "addr": "0x0812c000",
@@ -405,6 +442,8 @@
   "constants": {
     "_comment": "become CONST_<name> in fw_syms.h",
     "cfg_key_event": "0x11",
+    "page_count": "0x11",
+    "subtick_irq": "0x32",
     "fx_block_frames": "16",
     "fx_switch_short_level": "1",
     "json_buf_size": "0x1000",

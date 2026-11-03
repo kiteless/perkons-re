@@ -36,6 +36,15 @@ int pk_host_booted(void);               /* boot hook ran (guards calls that come
  * Hooks only run once the host has booted; before that the firmware calls stock. */
 #define PK_NEXT(hook)   pk_next_##hook
 
+/* a message to the M7, safe from any context; for an M7 host message `my-msg` send
+ * pk_send_m7(PK_STREAM_MY_MSG, PK_MSG_MY_MSG, buf, len) */
+int pk_send_m7(int stream, int type, const void *buf, int len);
+
+/* write a pattern's / kit's sidecar file now (as its save does), e.g. after a setting that
+ * lives in the kit changed: every mod's record for it is written */
+void pk_store_save_pattern(int bank, int idx);
+void pk_store_save_kit(int bank, int kit);
+
 #define PK_FX_NF        ((int)CONST_fx_block_frames)   /* stereo frames per block, L used */
 #define PK_FX_BUF_LEN   16384
 extern int16_t pk_fx_buf[PK_FX_BUF_LEN];               /* 32 KB, owned by the running engine */

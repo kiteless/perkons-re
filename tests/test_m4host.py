@@ -308,3 +308,73 @@ class TestStore(unittest.TestCase):
         h.store('kit', 'ABCD', 'a', 'b')
         with self.assertRaises(m4host.HostError):
             h.store('kit', 'ABCD', 'c', 'd')
+
+
+PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm4host_page.c')
+
+
+@unittest.skipUnless(shutil.which('arm-none-eabi-gcc'), 'arm-none-eabi-gcc not installed')
+class TestPages(unittest.TestCase):
+    """Mods' UI pages after the stock ones (h.page)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stock = Image.load(require_image('v1.3.0'))
+        cls.s4, cls.s7 = Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json')), Symbols(SYMBOLS_V130)
+        p = Patcher(cls.stock)
+        p.symbols = {'m7': cls.s7, 'm4': cls.s4}
+        cls.tmp = tempfile.mkdtemp(prefix='pk-page-')
+        p.build_dir = cls.tmp
+        h = m4host.host(p)
+        h.add([PAGE], init='pk_pg_init')
+        h.page('beta', key='pk_pg_key', draw='pk_pg_draw')
+        h.page('alpha', key='pk_pg_key', draw='pk_pg_draw', enter='pk_pg_enter', leave='pk_pg_leave')
+        cls.img, cls.s = p.result(), p.cave_symbols['m4host']
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def rig(self):
+        from perkons.rig import M4Rig
+        return M4Rig(self.img, self.s)
+
+    def log(self, r):
+        return [r.e.r32(self.s['pk_pg_log'] + 4 * i) for i in range(r.e.r32(self.s['pk_pg_n']))]
+
+    def test_numbered_after_the_stock_pages_in_name_order(self):
+        r = self.rig()
+        n = self.s4.const['page_count']
+        self.assertEqual([r.e.r8(self.s['pk_pg_numbers'] + i) for i in (0, 1)], [n, n + 1])
+
+    def test_stock_pages_unchanged(self):
+        r = self.rig()
+        for mode in (0, 3, 5, 7):
+            r.set_mode(mode)
+            self.assertEqual(r.mode(), mode)
+        self.assertEqual(self.log(r), [])
+
+    def test_enter_keys_draw_and_leave(self):
+        r = self.rig()
+        played = []
+        r.e.stub(self.s4.fn['voice_play'], lambda e, voice, on, *a: played.append((voice, on)))
+        r.set_mode(self.s4.const['page_count'])           # alpha
+        r.press(0x05)                                       # a step: the page's
+        r.press(0x4b)                                       # trigger key 1: stock, plays voice 1
+        r.e.call(self.s4.fn['ui_update'], max_insns=20_000_000)
+        self.assertEqual(r.leds.get(0), 0x80)
+        r.press(0x43)                                       # MOD: stock, the MOD page
+        r.e.call(self.s4.fn['apply_mode'], max_insns=5_000_000)
+        self.assertEqual(r.mode(), 3)
+        self.assertEqual(self.log(r), [1, 3, 4, 2])
+        self.assertEqual(played, [(0, 1), (0, 0)])
+
+    def test_bad_names_refused(self):
+        p = Patcher(self.stock)
+        p.symbols = {'m7': self.s7, 'm4': self.s4}
+        h = m4host.host(p)
+        with self.assertRaises(m4host.HostError):
+            h.page('two words', key='a', draw='b')
+        h.page('x', key='a', draw='b')
+        with self.assertRaises(m4host.HostError):
+            h.page('x', key='c', draw='d')
