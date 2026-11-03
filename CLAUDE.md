@@ -37,11 +37,13 @@ untracked `local.mk` (`PERKONS_MODS = ../perkons-re-mods`).
   `process.md`, `porting-rehearsal.md`, `mods/<mod>/`). Keep public docs free of
   architectural detail (addresses, internal functions, layouts, RE findings).
 * `docs/porting.md`: moving to a new firmware version
-* `symbols/v1.3.0-{m4,m7}.json`: the only place addresses live (plus each mod's own
-  `symbols/` file of hook sites, merged in by `Symbols`, ported with them)
+* `symbols/v1.3.0-{m4,m7}.json`: firmware addresses (plus each mod's own `symbols/` file
+  of hook sites, merged in by `Symbols`). Code and tests use names from these, not raw
+  addresses, so everything moves with the porter to a new firmware version (a design
+  choice, not an owner rule)
 * `tools/perkons/`: `fwimage`, `emu` (M7Emu, M7System, M4Emu with an SD card that has
   folders, M4FX), `patch`, `cbuild`, `m4host` / `m7host` (each core's shared plumbing:
-  boot, settings, FX chain, events, sidecar storage, config messages) on `hooks` (chained
+  boot, settings, FX chain, events, sidecar storage, UI pages, config messages) on `hooks` (chained
   hook points, `PK_NEXT`, boot guards), `rig` (M4Rig: a booted M4 with a virtual panel),
   `catalog` + `tools/modmatrix.py` + `ui/modmatrix/` (Mod Matrix web app), `port`,
   `verify`, `mods`
@@ -51,7 +53,7 @@ untracked `local.mk` (`PERKONS_MODS = ../perkons-re-mods`).
 ## Commands
 
 ```sh
-make test          # framework + all mods, ~5 min (emulator-heavy; a sleeping Mac stalls it)
+make test          # framework + all mods in parallel, ~1.5 min with the build cache (.cache/)
 make test-fast     # container + patcher + every mod registered together (clashes)
 make build PATCHES='fx_reverb fx_freeze'   # builds/<name>.img + voice regression
 make ui            # Mod Matrix at http://127.0.0.1:6464/ (UI_ARGS=--no-intro)
@@ -74,7 +76,8 @@ from Homebrew. Long runs: start them in the background and wait for the notifica
 * Mods overview: see `../perkons-re-mods/CLAUDE.md`.
 * Hosts on both cores: hook points chain (`PK_NEXT`), every hook is stock until its host
   has booted; M4 events (`track_clear`, `automation_clear`, `pattern_clear`), sidecar
-  storage (`BANKS/NN/PP.PAX`, `KITS/PP.KIX`); M7 host owns boot, config messages, the
+  storage (`BANKS/NN/PP.PAX`, `KITS/PP.KIX`), mods' UI pages (`h.page`, numbered from
+  17 after the stock pages); M7 host owns boot, config messages, the
   heap cap and 4 KB of VOICE.
 * After flashing, `INFO.TXT` on the card shows the build's `version_stamp` tag
   (`gd5b5810` = the official image).

@@ -126,6 +126,7 @@ def apply(p, arg=None):
     h.redirect_call('fx_update.call_read_switch', 'pk_my_hook', 'why')   # hook points (chained)
     h.on('track_clear', 'pk_my_cleared')      # an event: void f(void), before the firmware does it
     h.store('pattern', 'MYMD', 'pk_my_save', 'pk_my_load')   # per-pattern data, sidecar file
+    h.page('my_page', key='pk_my_key', draw='pk_my_draw', leave='pk_my_leave')   # a UI page
 ```
 
 Events (`m4host.EVENTS`): `track_clear`, `automation_clear`, `pattern_clear`,
@@ -137,7 +138,23 @@ u32 length, data}`; unknown tags skipped). `uint32_t save(int bank, int idx, uin
 uint32_t max)` gives the record when the pattern/kit is saved (0: none); `void load(int
 bank, int idx, const uint8_t *rec, uint32_t len)` gets it after a bank load, for every
 index, and after a clear (len 0: none). A record is at most 4 KB (the firmware's JSON
-buffer is the file buffer).
+buffer is the file buffer). `pk_store_save_kit(bank, kit)` / `pk_store_save_pattern(bank,
+idx)` write a sidecar file now, e.g. when a setting kept in the kit changed outside a kit
+save (every mod's record for it is written).
+
+**UI pages** (`h.page(name, key, draw, enter=None, leave=None)`): a page of the mod's own,
+beside the stock ones (MAIN, SHIFT, MOD, PATTERN, KIT, the config menu, ...).
+`PK_PAGE_<NAME>` is its number: open it with `fw_set_mode(PK_PAGE_<NAME>)`, typically
+from a key combination (chain `keys.handler_lit`). `int key(const uint8_t *evt)` gets
+every key first (`evt[0]` the key, `evt[1]` `FW_EV_DOWN` / `FW_EV_UP`) and returns nonzero
+for the ones it handled; the rest get the stock handling, so the trigger keys play the
+voices and the page buttons leave, as on the config menu. Return nonzero for the release
+of a page button held to open the page: stock, releasing a long-held page button goes
+to the MAIN page. `void draw(void)` sets the page's step LEDs each UI update; `enter` /
+`leave` run when it's entered and left (e.g. save there). voice-map's engine page is one.
+
+The config page's event and render words are chained like any hook: a mod registering
+`h.replace_word('cfg_page.event_word', ...)` runs before the host's toggles.
 
 In C, use ordinary globals: both RAM areas are zeroed at boot. Where they go:
 
@@ -170,37 +187,51 @@ def apply(p, arg=None):
     h = m7host.host(p)
     h.add([os.path.join(SRC, 'my_engine.c')], [SRC], init='pk_my_init')   # at boot
     h.message('my-msg', 'pk_my_msg')          # config message: void f(const uint8_t *, uint32_t)
+    h.message('my-map', 'pk_my_map', ordered=True)   # ... in order with the trigger messages
     h.redirect_call('some.site', 'pk_my_hook', 'why')                      # chained
 ```
 
 The host owns the M7's boot step (once the stock voices are set up: the M7 mods' RAM
 zeroed, then their inits), the config messages the firmware doesn't know (dispatched by
 type) and the heap cap. Message types are given out by name (`m7host.message_types`) and
-are `PK_MSG_<NAME>` in both cores' builds, so the M4 side sends what the M7 side
-expects. `.bss` goes in a 4 KB part of the **VOICE** area; a mod with a fixed range
+are `PK_MSG_<NAME>` in both cores' builds, with `PK_STREAM_<NAME>` the stream to send them
+on, so the M4 side sends what the M7 side expects: `pk_send_m7(PK_STREAM_MY_MSG,
+PK_MSG_MY_MSG, buf, len)`, safe from any context. An **ordered** message travels with the
+triggers and is handled in the audio callback before the trigger messages queued after it
+(keep its handler short); the others are handled in the M7's main loop, in their own
+time. `.bss` goes in a 4 KB part of the **VOICE** area; a mod with a fixed range
 records it with `p.ram_use('voice', 'my_mod', size, addr)`. Include `pk7_host.h`.
 
 ### A new voice engine: add it to voice-map
 
-A voice engine for any output is an extra voice-map engine, like `voice-slinks`: a
+A voice engine for any output is an extra voice-map engine, like `voice-zibens`: a
 `cVoice`-compatible C object (the stock field offsets, a 4-method vtable) built in an
 output's arena by a `build(obj, out)` function your patch registers by name,
 `p.shared['voice_map']['engines']['my-engine'] = {'sources': [...], 'include_dirs': [...],
-'build': 'pk_my_build'}`; users select it by that name in `voices.json` (`"voice3":
-"my-engine"`), and voice-map numbers the engines itself. Mark it `"requires":
-["voice-map"]` in mod.json.
+'build': 'pk_my_build', 'slot': int(arg) if arg else None}`. The patch's argument is the
+voice slot (5-16) it's installed in: its engine number and its column on the engine page
+(no slot: the next free one). In mod.json give the option `"kind": "voice"` and
+`"requires": ["voice-map"]`: the Mod Matrix then lists it on the ENGINES tab (where the mod it requires is
+the ENABLE CUSTOM VOICE ENGINES switch), and passes the
+slot (`my_engine:6`) from the order it's installed in.
 
 ### C rules (both cores)
 
 `-Os`, freestanding, no libc. Functions named `pk*` are kept as hook targets. Call
-firmware functions through the `fw_*` macros in `fw_<core>.h`. Keep per-sample work
-small; measure with the emulator (`count_insns`).
+firmware functions through the `fw_*` macros in `fw_<core>.h`, and use names from the
+symbols files, never raw addresses, so the mod ports with the framework. Shared helpers
+(`include/common/pk_util.h`, both cores): `pk_irq_off()` / `pk_irq_restore()` around a
+short critical section, `pk_copy()` (16 bytes per load/store pair when aligned). On the
+M4, `fw_pattern_of(hdr)` gives a pattern header's number. Keep per-sample work small;
+measure with the emulator (`count_insns`).
 
 ## 4. Test in the emulator
 
 `tests/fixtures.py` (framework) gives `require_image('v1.3.0')` and
 `build_patched(stock, ['my_mod'], build_dir)` → `(image, patcher)`; the M4 host's
-symbols are in `patcher.cave_symbols['m4host']`. Harnesses in `tools/perkons/emu.py`:
+symbols are in `patcher.cave_symbols['m4host']`. Builds are cached in `.cache/builds/` by
+every build input, so tests that build the same image share it. Harnesses in
+`tools/perkons/emu.py`:
 
 | class | runs | use for |
 |---|---|---|
@@ -208,7 +239,7 @@ symbols are in `patcher.cave_symbols['m4host']`. Harnesses in `tools/perkons/emu
 | `M7System` | the M7 program's own start-up, message loop and audio callback | M7 patches |
 | `M4Emu` | M4 code with a virtual SD card (`sd={'system/device.json': b'...'}`) | config, JSON, boot hooks |
 | `M4FX` | the M4's FX path as on the unit; knobs + switch from Python | FX mods (fails on writes outside the output block) |
-| `rig.M4Rig` | a booted M4 (sequencer set up, host booted) with a virtual panel: held keys and steps, knobs and their moved flags, LEDs, key events | UI / sequencer mods |
+| `rig.M4Rig` | a booted M4 (sequencer set up, host booted) with a virtual panel: held keys and steps, knobs and their moved flags, LEDs, key events (into the image's registered key handler, so key hooks run); the sequencer clocked as on the unit (`set_step`, `play`, `run(steps)` → what it sent, `switch_to(pattern)`) | UI / sequencer mods |
 
 The emulated SD card (`sd={path: bytes}`) has folders (implied by the files in them),
 `f_opendir` / `f_readdir`, `f_unlink`; `rig.stub_hardware(e, sym)` gives any harness the
@@ -220,7 +251,8 @@ with others) a build with them. If a hook reads firmware state that isn't a call
 (a register kept across the call, a stack slot), test that the stock code still does it,
 so a port to new firmware catches a change. `make test-fast` applies every mod's options
 together without building (`tests/test_mod_clashes.py`): clashing ids, build codes, config
-keys, settings, messages or engine names fail there. `make test` runs everything (~5 minutes; emulator-heavy).
+keys, settings, messages or engine names fail there. `make test` runs everything, each
+test module in its own process (`tools/run_tests.py -j N`; `--serial` for one process).
 
 ## 5. Build and listen
 
