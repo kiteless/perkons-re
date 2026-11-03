@@ -59,6 +59,7 @@ def options():
             out.append({'id': o['id'], 'title': o['title'], 'summary': o['summary'],
                         'patches': list(o['patches']), 'code': o['code'],
                         'conflicts': list(o.get('conflicts', [])), 'requires': list(o.get('requires', [])),
+                        'kind': o.get('kind', 'mod'),
                         'mod': os.path.basename(d),
                         'target': targets.pop()[1:] if targets else None, 'risk': risk})
     return out
@@ -93,14 +94,29 @@ def inspect(raw):
                  'segments': [{'core': s.name, 'size': len(s.data)} for s in img.segments]}
 
 
-def check_selection(ids, version):
-    """The chosen options, validated for this base version. Returns (options, patch specs)."""
+FIRST_VOICE_SLOT = 5           # voice slots 1-4: the official voices
+MAX_VOICE_SLOT = 16
+
+
+def check_selection(ids, version, voices=()):
+    """The chosen options, validated for this base version. ids: mods (and voices, in any
+    order); voices: the installed voices in slot order, from FIRST_VOICE_SLOT. Returns
+    (options, patch specs); a voice's patch gets its slot as its argument."""
     by_id = {o['id']: o for o in options()}
+    voices = list(voices)
+    if len(set(voices)) != len(voices):
+        raise CatalogError('a voice can be installed once')
+    if len(voices) > MAX_VOICE_SLOT - FIRST_VOICE_SLOT + 1:
+        raise CatalogError(f'at most {MAX_VOICE_SLOT - FIRST_VOICE_SLOT + 1} voices')
+    ids = list(dict.fromkeys([i for i in ids if i not in voices] + voices))
     chosen = []
     for i in ids:
         if i not in by_id:
             raise CatalogError(f'unknown option {i!r}')
-        chosen.append(by_id[i])
+        o = by_id[i]
+        if (o['kind'] == 'voice') != (i in voices):
+            raise CatalogError(f'{o["title"]}: voices are installed in a slot, mods ticked')
+        chosen.append(o)
     if not chosen:
         raise CatalogError('choose at least one mod')
     for o in chosen:
@@ -112,7 +128,9 @@ def check_selection(ids, version):
         missing = set(o['requires']) - set(ids)
         if missing:
             raise CatalogError(f'{o["title"]} needs {", ".join(sorted(missing))} too')
-    specs = list(dict.fromkeys(p for o in chosen for p in o['patches']))   # a shared patch once
+    slot = {i: FIRST_VOICE_SLOT + n for n, i in enumerate(voices)}
+    specs = list(dict.fromkeys(f'{p}:{slot[o["id"]]}' if o['id'] in slot else p
+                               for o in chosen for p in o['patches']))   # a shared patch once
     return chosen, specs
 
 

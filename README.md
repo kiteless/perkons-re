@@ -71,9 +71,14 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 
 1. Drop the official `perkons_v1.3.0-0-force.img` on the page (or click to choose it). It
    only accepts an unmodified official image.
-2. Tick the mods you want. Some need another mod; the page ticks it for you.
-3. Press **PATCH IT** and wait about a minute.
-4. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
+2. On the **MODS** tab, tick the mods you want. Some need another mod; the page ticks it
+   for you.
+3. To add voice engines, go to the **ENGINES** tab, tick **ENABLE CUSTOM VOICE ENGINES**
+   (the voice-map mod), then click voices in AVAILABLE to install them. They take voice slots 5, 6, … in the order you add them (slots
+   1–4 are the official voices); click one in TO BE INSTALLED to remove it. That order is the
+   engine page's columns on the unit, so keep it the same when you rebuild.
+4. Press **PATCH IT** and wait about a minute.
+5. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
 
 ### 5. Flash it
 
@@ -90,7 +95,7 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 
 Each mod's page says how to use it:
 [voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
-[voice-slinks](https://github.com/kiteless/perkons-re-mods/tree/main/voice-slinks),
+[voice-zibens](https://github.com/kiteless/perkons-re-mods/tree/main/voice-zibens),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
 [eight-lanes](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes),

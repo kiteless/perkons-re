@@ -33,13 +33,19 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 }
 @media (max-width: 600px) {
   #desk { margin: 12px auto; padding: 0 8px; gap: 12px; }
-  #screen, #mem { padding: 12px; border-width: 12px; }
+  #side { gap: 12px; }
+  #screen, #mem, #go { padding: 12px; border-width: 12px; }
 }
 
-/* memory pane: three meters, after the sign-on screen of a 1992 PC shooter; as tall as
-   the main box, the ring columns take what the text leaves */
+/* right of the screen, as tall as it: the memory pane, and under it the PATCH IT pane
+   (constant height); the memory pane takes the rest */
+#side { flex: 0 0 auto; align-self: stretch; display: flex; flex-direction: column; gap: 24px; }
+#go { flex: 0 0 auto; padding: 24px; background: var(--blue); border: 24px solid var(--lightblue); }
+
+/* memory pane: three meters, after the sign-on screen of a 1992 PC shooter; the ring
+   columns take what the text leaves */
 #mem {
-  flex: 0 0 auto; align-self: stretch; display: flex; flex-direction: column;
+  flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
   padding: 24px; background: var(--blue); border: 24px solid var(--lightblue);
 }
 #mem .cols { flex: 1 1 auto; display: flex; justify-content: center; gap: 24px; margin-top: 8px; min-height: 0; }
@@ -73,16 +79,39 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 .drop:hover, .drop:focus-visible, .drop.over { background: var(--lightblue); outline: none; }
 .drop:hover .pix, .drop:focus-visible .pix, .drop.over .pix { color: var(--blue); }
 
-#mods { list-style: none; margin: 0; padding: 0; }
-#mods li { margin: 0 0 20px; }
-#mods label { display: block; cursor: pointer; padding: 4px; }
-#mods label:focus-within { outline: 4px solid var(--white); }
-#mods .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-#mods .name { color: var(--white); }
-#mods .req { color: var(--cyan); margin-left: auto; }
-#mods .sum { color: var(--lightgrey); margin-top: 16px; }   /* one blank text line */
-#mods li.off .pix { color: var(--grey); }
-#mods li.off label { cursor: not-allowed; }
+/* step 2: MODS / ENGINES tabs */
+#tabs { display: flex; gap: 12px; margin-bottom: 20px; }
+.tab { padding: 8px 16px; cursor: pointer; background: var(--blue); border: 4px solid var(--lightblue); font: inherit; }
+.tab[aria-selected="true"] { background: var(--lightblue); }
+.tab[aria-selected="true"] .pix { color: var(--blue); }
+.tab:hover, .tab:focus-visible { border-color: var(--white); outline: none; }
+
+/* ENGINES: INSTALLED (from slot 5) and AVAILABLE side by side */
+#voices > .pix { margin-bottom: 20px; }
+.vcols[hidden], #slotnote[hidden] { display: none; }
+.vcols { display: flex; gap: 24px; align-items: flex-start; }
+.vcol { flex: 1 1 0; min-width: 0; }
+.vcol > .head { margin-bottom: 12px; }
+.vcol ul { list-style: none; margin: 0; padding: 0; min-height: 48px; }
+.vcol li { margin: 0 0 12px; }
+.voice { display: block; width: 100%; text-align: left; padding: 8px; cursor: pointer;
+  background: none; border: 4px solid var(--lightblue); font: inherit; }
+.voice:hover:not(:disabled), .voice:focus-visible { border-color: var(--white); outline: none; }
+.voice:disabled { cursor: not-allowed; }
+.voice .sum { color: var(--lightgrey); margin-top: 8px; }
+.voice:disabled .pix { color: var(--grey); }
+@media (max-width: 600px) { .vcols { flex-direction: column; } }
+
+.opts { list-style: none; margin: 0; padding: 0; }
+.opts li { margin: 0 0 20px; }
+.opts label { display: block; cursor: pointer; padding: 4px; }
+.opts label:focus-within { outline: 4px solid var(--white); }
+.opts .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.opts .name { color: var(--white); }
+.opts .req { color: var(--cyan); margin-left: auto; }
+.opts .sum { color: var(--lightgrey); margin-top: 16px; }   /* one blank text line */
+.opts li.off .pix { color: var(--grey); }
+.opts li.off label { cursor: not-allowed; }
 
 .patch {
   display: block; width: 100%; padding: 16px 24px; cursor: pointer; text-align: left;
@@ -93,12 +122,11 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 /* inactive: a dashed outline, like the firmware drop area */
 .patch:disabled { background: var(--blue); border-style: dashed; cursor: not-allowed; }
 .patch:disabled .pix { color: var(--lightblue); }
-.step.locked .patch { border-color: var(--grey); }
-.step.locked .patch .pix { color: var(--grey); }
 .patch.busy, .patch.busy:disabled { background: var(--yellow); border: 4px solid var(--yellow); }
 .patch.busy .pix { color: var(--blue); }
 
-.log { margin-top: 20px; min-height: 16px; }
+#result { margin-top: 32px; }
+.log { min-height: 16px; }
 .log .pix { color: var(--lightblue); }
 .log .pix.err { color: var(--lightred); }
 .log .pix.ok { color: var(--lightgreen); }

@@ -16,7 +16,8 @@ API (JSON unless noted):
   GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
                                {state: measuring|done, areas: {main|voice|store: {size}},
                                 options: {id: {area: {owner: bytes}}}, errors: {id: text}}
-  POST /api/build              {image, options: [ids], checks: bool} -> {job}
+  POST /api/build              {image, options: [mod ids], voices: [voice ids, slot order],
+                               checks: bool} -> {job}
   GET  /api/job/<id>           {state: running|done|failed, log: [...], download}
   GET  /api/download/<id>      the built image (application/octet-stream)
 """
@@ -38,8 +39,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.insert(0, ROOT)
-from build import apply_specs, build_image, regression  # noqa: E402
-from perkons import catalog, cbuild, ram  # noqa: E402
+from build import apply_specs, build_image, m7_code, regression  # noqa: E402
+from perkons import catalog, cbuild, ram, srchash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
@@ -106,8 +107,14 @@ class App:
 
     def measure(self, image_id):
         """Build every option alone (with what it requires, no image written) and record the
-        RAM it takes, for the MAIN / VOICE / STORE meters."""
+        RAM it takes, for the MAIN / VOICE / STORE meters. Kept in .cache/memory/ by a hash
+        of the image and every build input, so a restart with nothing changed is instant."""
         img, _, info = self.images[image_id]
+        cache = srchash.path('memory', srchash.key(info['sha256']), '.json')
+        if os.path.exists(cache):
+            with open(cache) as f:
+                self.memory[image_id] = json.load(f)
+            return
         symbols = os.path.join(ROOT, 'symbols', f'v{info["version"]}-m7.json')
         syms = {'m7': Symbols(symbols), 'm4': Symbols(symbols.replace('-m7.json', '-m4.json'))}
         areas = {a: {'start': lo, 'size': hi - lo} for a, (lo, hi) in ram.areas(syms).items()}
@@ -125,7 +132,10 @@ class App:
                     opts[o['id']] = {a: {k: size for k, (_, size) in own.items()} for a, own in p.ram.items()}
                 except BaseException as e:   # also sys.exit from a target mismatch
                     errors[o['id']] = str(e)
-        self.memory[image_id] = {'state': 'done', 'areas': areas, 'options': opts, 'errors': errors}
+        self.memory[image_id] = m = {'state': 'done', 'areas': areas, 'options': opts, 'errors': errors}
+        if not errors:
+            with open(cache, 'w') as f:
+                json.dump(m, f)
 
     def start_build(self, req):
         if req.get('image') not in self.images:
@@ -133,7 +143,8 @@ class App:
         img, raw, info = self.images[req['image']]
         if not info['supported']:
             raise catalog.CatalogError(f'firmware {info["version"]} is not supported yet')
-        chosen, specs = catalog.check_selection(list(req.get('options', [])), info['version'])
+        chosen, specs = catalog.check_selection(list(req.get('options', [])), info['version'],
+                                                voices=list(req.get('voices', [])))
         mem = self.memory.get(req['image'], {})
         if mem.get('state') == 'done':
             catalog.check_memory([o['id'] for o in chosen], mem)
@@ -155,10 +166,10 @@ class App:
                 with contextlib.redirect_stdout(LineLog(job)):
                     job.say(f'MODS: {titles}')
                     job.say(f'TAG: {tag}')
-                    built, _ = build_image(job.img, out, specs, symbols, build_dir=os.path.join(d, 'obj'),
+                    built, p = build_image(job.img, out, specs, symbols, build_dir=os.path.join(d, 'obj'),
                                            extra_kwargs={'version_stamp': {'banner': f'+ mod matrix: {titles}'}})
                     if job.checks:
-                        bad = regression(job.img, built, symbols)
+                        bad = regression(job.img, built, symbols, renders=m7_code(p))
                         if bad:
                             raise RuntimeError(f'{len(bad)} voice renders differ from stock: not safe to flash')
                 job.out, job.name = out, f'perkons_v{job.img.version}-0-force.img'

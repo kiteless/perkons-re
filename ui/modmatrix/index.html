@@ -28,19 +28,30 @@
     </section>
 
     <section id="s2" class="step locked" aria-disabled="true">
-      <h2 class="pix head">2. CHOOSE YOUR MODS</h2>
-      <ul id="mods"></ul>
+      <h2 class="pix head">2. CHOOSE YOUR MODS AND ENGINES</h2>
+      <div id="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="mods" aria-selected="true"><span class="pix" data-nowrap="1">MODS</span></button>
+        <button class="tab" role="tab" data-tab="voices" aria-selected="false"><span class="pix" data-nowrap="1">ENGINES</span></button>
+      </div>
+      <ul id="mods" class="opts" role="tabpanel"></ul>
+      <div id="voices" role="tabpanel" hidden>
+        <ul id="enginehost" class="opts"></ul>
+        <p id="slotnote" class="pix dim">VOICE SLOTS 1-4 RESERVED FOR OFFICIAL ENGINES. HONOR THOSE WHO CAME BEFORE.</p>
+        <div class="vcols">
+          <div class="vcol"><p class="pix head">TO BE INSTALLED</p><ul id="installed"></ul></div>
+          <div class="vcol"><p class="pix head">AVAILABLE</p><ul id="available"></ul></div>
+        </div>
+      </div>
     </section>
 
-    <section id="s3" class="step locked" aria-disabled="true">
-      <h2 class="pix head">3. BUILD</h2>
-      <button id="patch" class="patch" disabled><span class="pix" data-nowrap="1" data-scale="4">PATCH IT</span></button>
+    <section id="result">
       <div id="log" class="log" aria-live="polite"></div>
       <a id="dl" class="dl" hidden><span class="pix" data-nowrap="1">DOWNLOAD</span></a>
       <p id="howto" class="pix dim" hidden>COPY IT TO THE ROOT OF THE SD CARD UNDER THAT NAME AND POWER ON. THE UNIT FLASHES ITSELF. TO GO BACK, DO THE SAME WITH THE OFFICIAL IMAGE.</p>
     </section>
   </main>
 
+  <div id="side">
   <aside id="mem" aria-labelledby="mem-title">
     <h2 id="mem-title" class="pix head" data-align="center">MEMORY</h2>
     <div class="cols">
@@ -68,6 +79,8 @@
     </div>
     <p id="memnote" class="pix dim" aria-live="polite">LOAD FIRMWARE TO MEASURE.</p>
   </aside>
+  <div id="go"><button id="patch" class="patch" disabled><span class="pix" data-nowrap="1" data-scale="4">PATCH IT</span></button></div>
+  </div>
   </div>
 
   <section id="disclaimer">

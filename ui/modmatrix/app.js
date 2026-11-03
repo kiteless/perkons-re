@@ -203,7 +203,12 @@ function scroller() {
 /* ---- the three steps ---- */
 
 const state = { status: null, options: [], image: null, info: null, chosen: new Set(), building: false,
-  memory: null, hover: null };
+  memory: null, hover: null, voices: [], tab: "mods" };
+
+const FIRST_VOICE_SLOT = 5, MAX_VOICES = 12;     // slots 1-4: the official voices
+const isVoice = (o) => o.kind === "voice";
+/* what the voices require (voice-map) sits on the ENGINES tab as its on/off switch */
+const isEngineHost = (o) => state.options.some((v) => isVoice(v) && (v.requires || []).includes(o.id));
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -217,6 +222,7 @@ function lock(id, locked) {
   el.classList.toggle("locked", locked);
   el.setAttribute("aria-disabled", String(locked));
   el.querySelectorAll("input, button").forEach((i) => { if (locked) i.disabled = true; });
+  el.querySelectorAll(".tab").forEach((t) => { t.disabled = locked; });   // tabs aren't re-rendered
 }
 
 function say(el, cls, text) {
@@ -242,8 +248,27 @@ function select(id) {
 
 function deselect(id) {
   if (!state.chosen.delete(id)) return;
-  for (const o of state.options) if ((o.requires || []).includes(id)) deselect(o.id);
+  for (const o of state.options) {
+    if (!(o.requires || []).includes(id)) continue;
+    if (isVoice(o)) state.voices = state.voices.filter((v) => v !== o.id);
+    else deselect(o.id);
+  }
 }
+
+/* voices need what they require (voice-map) ticked first; everything is staged until PATCH IT */
+const voiceReady = (o) => (o.requires || []).every((r) => state.chosen.has(r));
+
+function install(id) {
+  if (state.voices.includes(id) || state.voices.length >= MAX_VOICES) return;
+  state.voices.push(id);
+}
+
+function uninstall(id) {
+  state.voices = state.voices.filter((v) => v !== id);
+}
+
+/* everything the build would take: ticked mods and installed voices */
+const picked = () => [...state.chosen, ...state.voices];
 
 /* ---- memory: MAIN (M4 patch RAM), VOICE (M7), STORE (AXI SRAM); see tools/perkons/ram.py ---- */
 
@@ -313,9 +338,9 @@ function drawMeter(cv, frac, extra) {
 
 function renderMem() {
   const m = state.memory, done = m && m.state === "done";
-  const ids = withRequires([...state.chosen]);
+  const ids = withRequires(picked());
   const used = done ? ramUsed(ids) : null;
-  const hov = done && state.hover && !state.chosen.has(state.hover) ? ramUsed(withRequires([...ids, state.hover])) : null;
+  const hov = done && state.hover && !ids.includes(state.hover) ? ramUsed(withRequires([...ids, state.hover])) : null;
   for (const col of document.querySelectorAll("#mem .col")) {
     const a = col.dataset.area, cap = col.querySelector(".cap"), free = col.querySelector(".free");
     if (!done) {
@@ -359,52 +384,107 @@ function renderMods() {
   if (!state.options.length) {
     ul.append(pix("li", "dim", "NO MODS FOUND. SET PERKONS_MODS (SEE README)."));
   }
-  for (const o of state.options) {
-    const li = document.createElement("li");
-    const over = state.chosen.has(o.id) ? null : overArea(withRequires([...state.chosen, o.id]));
-    const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
-    const ok = usable(o) && !clashes(o).length && !over && !merr;
-    li.classList.toggle("off", !ok);
-    const label = document.createElement("label");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.className = "sr";
-    box.checked = state.chosen.has(o.id);
-    box.disabled = !ok || state.building;
-    box.addEventListener("change", () => {
-      if (box.checked) select(o.id); else deselect(o.id);
-      renderMods();
-      updatePatch();
-    });
-    const row = document.createElement("div");
-    row.className = "row";
-    row.append(pix("p", "name", `[${box.checked ? "X" : " "}] ${o.title}`, { nowrap: "1" }),
-      pix("p", "req", `REQUIRES ${o.target || "ANY FIRMWARE"}`, { nowrap: "1" }));
-    const sum = pix("p", "sum", o.summary.toUpperCase());
-    label.append(box, row, sum);
-    if (state.info && o.target && o.target !== state.info.version) {
-      label.append(pix("p", "err", `NOT AVAILABLE FOR ${state.info.version}`));
-    }
-    const cl = clashes(o);
-    if (cl.length) label.append(pix("p", "err", `CAN'T BE COMBINED WITH ${cl.join(", ").toUpperCase()}`));
-    if (over) label.append(pix("p", "err", `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`));
-    if (merr) label.append(pix("p", "err", `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}`));
-    li.append(label);
-    li.addEventListener("mouseenter", () => { state.hover = o.id; renderMem(); });
-    li.addEventListener("mouseleave", () => { state.hover = null; renderMem(); });
-    box.addEventListener("focus", () => { state.hover = o.id; renderMem(); });
-    box.addEventListener("blur", () => { state.hover = null; renderMem(); });
-    ul.append(li);
-  }
+  for (const o of state.options.filter((x) => !isVoice(x) && !isEngineHost(x))) ul.append(optionItem(o, o.title));
   ul.querySelectorAll(".pix").forEach(pixRender);
+  renderVoices();
   renderMem();
+}
+
+/* a tickable option: [X] TITLE, what it needs, its summary, why it can't be ticked */
+function optionItem(o, title) {
+  const li = document.createElement("li");
+  const over = state.chosen.has(o.id) ? null : overArea(withRequires([...picked(), o.id]));
+  const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
+  const ok = usable(o) && !clashes(o).length && !over && !merr;
+  li.classList.toggle("off", !ok);
+  const label = document.createElement("label");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.className = "sr";
+  box.checked = state.chosen.has(o.id);
+  box.disabled = !ok || state.building;
+  box.addEventListener("change", () => {
+    if (box.checked) select(o.id); else deselect(o.id);
+    renderMods();
+    updatePatch();
+  });
+  const row = document.createElement("div");
+  row.className = "row";
+  row.append(pix("p", "name", `[${box.checked ? "X" : " "}] ${title}`, { nowrap: "1" }),
+    pix("p", "req", `REQUIRES ${o.target || "ANY FIRMWARE"}`, { nowrap: "1" }));
+  const sum = pix("p", "sum", o.summary.toUpperCase());
+  label.append(box, row, sum);
+  if (state.info && o.target && o.target !== state.info.version) {
+    label.append(pix("p", "err", `NOT AVAILABLE FOR ${state.info.version}`));
+  }
+  const cl = clashes(o);
+  if (cl.length) label.append(pix("p", "err", `CAN'T BE COMBINED WITH ${cl.join(", ").toUpperCase()}`));
+  if (over) label.append(pix("p", "err", `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`));
+  if (merr) label.append(pix("p", "err", `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}`));
+  li.append(label);
+  li.addEventListener("mouseenter", () => { state.hover = o.id; renderMem(); });
+  li.addEventListener("mouseleave", () => { state.hover = null; renderMem(); });
+  box.addEventListener("focus", () => { state.hover = o.id; renderMem(); });
+  box.addEventListener("blur", () => { state.hover = null; renderMem(); });
+  return li;
+}
+
+function voiceButton(o, label, onClick, ok, note) {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.className = "voice";
+  b.disabled = !ok || state.building;
+  b.append(pix("span", "name", label, { nowrap: "1" }), pix("p", "sum", o.summary.toUpperCase()));
+  if (note) b.append(pix("p", "err", note));
+  b.addEventListener("click", () => { onClick(); renderMods(); updatePatch(); });
+  for (const ev of ["mouseenter", "focus"]) b.addEventListener(ev, () => { state.hover = o.id; renderMem(); });
+  for (const ev of ["mouseleave", "blur"]) b.addEventListener(ev, () => { state.hover = null; renderMem(); });
+  li.append(b);
+  return li;
+}
+
+/* ENGINES: [ ] ENABLE CUSTOM VOICE ENGINES, then INSTALLED in slot order from 5 and AVAILABLE
+ * to its right; clicking moves a voice */
+function renderVoices() {
+  const host = $("enginehost"), inst = $("installed"), avail = $("available");
+  host.textContent = "";
+  inst.textContent = "";
+  avail.textContent = "";
+  for (const o of state.options.filter(isEngineHost)) host.append(optionItem(o, "ENABLE CUSTOM VOICE ENGINES"));
+  const voices = state.options.filter(isVoice);
+  const ready = voices.every(voiceReady);
+  document.querySelector("#voices .vcols").hidden = !ready;
+  $("slotnote").hidden = !ready;
+  state.voices.forEach((id, n) => {
+    const o = voices.find((x) => x.id === id);
+    if (o) inst.append(voiceButton(o, `${FIRST_VOICE_SLOT + n}. ${o.title}`, () => uninstall(id), true));
+  });
+  if (!state.voices.length) inst.append(pix("li", "dim", "NONE YET."));
+  const full = state.voices.length >= MAX_VOICES;
+  for (const o of voices.filter((x) => !state.voices.includes(x.id))) {
+    const over = overArea(withRequires([...picked(), o.id]));
+    const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
+    const note = !usable(o) && state.info ? `NOT AVAILABLE FOR ${state.info.version}`
+      : over ? `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`
+      : merr ? `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}` : full ? "ALL SLOTS TAKEN" : null;
+    avail.append(voiceButton(o, o.title, () => install(o.id), usable(o) && !over && !merr && !full, note));
+  }
+  if (!voices.length) avail.append(pix("li", "dim", "NO VOICES FOUND."));
+  for (const el of [host, inst, avail]) el.querySelectorAll(".pix").forEach(pixRender);
+}
+
+function showTab(tab) {
+  state.tab = tab;
+  for (const b of document.querySelectorAll(".tab")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+  $("mods").hidden = tab !== "mods";
+  $("voices").hidden = tab !== "voices";
+  pixAll();
 }
 
 function updatePatch() {
   const ready = state.info && state.info.official && state.info.supported && state.status && state.status.gcc;
   lock("s2", !ready);
-  lock("s3", !ready);
-  $("patch").disabled = !ready || !state.chosen.size || state.building;
+  $("patch").disabled = !ready || !picked().length || state.building;
   if (ready) renderMods();
   pixAll();
 }
@@ -414,6 +494,7 @@ async function loadFile(file) {
   state.info = null;
   state.image = null;
   state.chosen.clear();
+  state.voices = [];
   state.memory = null;
   $("dl").hidden = true;
   $("howto").hidden = true;
@@ -464,7 +545,7 @@ async function build() {
   try {
     const { job } = await api("/api/build", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: state.image, options: [...state.chosen], checks: true }),
+      body: JSON.stringify({ image: state.image, options: [...state.chosen], voices: state.voices, checks: true }),
     });
     all.push("PATCHING...");
     logLines(all);
@@ -515,8 +596,9 @@ async function main() {
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); pixAll(); }));
   drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
   $("patch").addEventListener("click", build);
+  for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
   // hover/focus colours change the text colour, which the canvases have to redraw for
-  for (const el of document.querySelectorAll(".drop, .patch, .dl")) {
+  for (const el of document.querySelectorAll(".drop, .patch, .dl, .tab")) {
     for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
       el.addEventListener(ev, () => requestAnimationFrame(() => el.querySelectorAll(".pix").forEach(pixRender)));
     }
