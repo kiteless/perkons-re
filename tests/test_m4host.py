@@ -12,6 +12,8 @@ from perkons import m4host
 from perkons.emu import M4Emu, M4FX, Symbols
 from perkons.fwimage import Image
 from perkons.patch import Patcher
+from unicorn import UC_HOOK_CODE
+from unicorn.arm_const import UC_ARM_REG_R1
 
 DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm4host_demo.c')
 
@@ -286,6 +288,22 @@ class TestStore(unittest.TestCase):
         e2.call(self.s['pk4_store_bank_load'], 2, max_insns=200_000_000)
         got = [e2.r8(self.s['pk_st_loaded'] + i) for i in (4, 5, 6)]
         self.assertEqual(got, [0xee, 0x25, 0x25])          # none, own, own after a foreign record
+
+    def test_bank_load_opens_only_the_files_there(self):
+        e = self.emu({'BANKS/03/07.PAX': b'PKX1', 'BANKS/03/00.PAT': b''})
+        opened = []
+        f_open = self.s4.fn['f_open']
+        e.uc.hook_add(UC_HOOK_CODE, lambda uc, *_: opened.append(e.cstr(uc.reg_read(UC_ARM_REG_R1))),
+                      begin=f_open, end=f_open)
+        e.call(self.s['pk4_store_bank_load'], 3, max_insns=200_000_000)
+        self.assertEqual(opened, ['BANKS/03/07.PAX'])
+
+    def test_kit_save_passes_on_the_stock_result(self):
+        """The kit page flashes the saved step only when kit_save returns non-zero."""
+        for result in (0, 1):
+            e = self.emu()
+            e.stub(self.s4.fn['kit_save'], lambda *a, r=result: r)
+            self.assertEqual(e.call(self.s['pk4_store_kit_save'], 0, 4, max_insns=5_000_000), result)
 
     def test_nothing_to_keep_no_file(self):
         e = self.emu({'BANKS/00/09.PAX': b'PKX1old!'})

@@ -4,8 +4,8 @@
  * PP.PAT / PP.KIT, which stay stock: "PKX1", then {char tag[4], u32 length, data} per
  * record. Unknown tags are skipped, so a file stays readable whatever mods a build has.
  * Saving a pattern or kit writes its file (records from each mod's save function);
- * clearing a pattern deletes it; a bank load reads all 64 of each and hands every mod its
- * record (length 0: none, e.g. no file). */
+ * clearing a pattern deletes it; a bank load lists the bank's folders once, reads the files
+ * there and hands every mod its record for all 64 of each (length 0: none, e.g. no file). */
 #include <stdint.h>
 #include "pk_host.h"
 
@@ -59,13 +59,41 @@ static void write_file(const pk_store_t *t, int n, int kit, int bank, int idx)
         fw_f_unlink(name);              /* no mod has anything: no file */
 }
 
-static void read_file(const pk_store_t *t, int n, int kit, int bank, int idx)
+/* which of a folder's files are NN.<ext> (NN < 64): bit NN of mask[2]. One listing per
+ * bank load instead of an open per index, most of which find nothing (the JSON buffer
+ * holds the DIR and FILINFO meanwhile). */
+static int digit(char c)
+{
+    return c >= '0' && c <= '9';
+}
+
+_Static_assert(FW_DIR_MAX + FW_FNO_SIZE <= CONST_json_buf_size, "DIR and FILINFO fit the JSON buffer");
+
+static void listing(const char *dir, const char *ext, uint32_t mask[2])
+{
+    uint8_t *d = BUF, *fno = BUF + FW_DIR_MAX;
+    mask[0] = mask[1] = 0;
+    if (fw_f_opendir(d, dir) != 0)
+        return;
+    while (fw_f_readdir(d, fno) == 0 && fno[FW_FNO_NAME]) {
+        const char *s = (const char *)fno + FW_FNO_NAME;
+        int ok = digit(s[0]) && digit(s[1]) && s[2] == '.' && !s[6];
+        for (int i = 0; ok && i < 3; i++)
+            ok = (s[3 + i] & ~0x20) == ext[i];          /* any case */
+        int idx = ok ? (s[0] - '0') * 10 + (s[1] - '0') : NIDX;
+        if (idx < NIDX)
+            mask[idx >> 5] |= 1u << (idx & 31);
+    }
+    fw_f_closedir(d);
+}
+
+static void read_file(const pk_store_t *t, int n, int kit, int bank, int idx, int there)
 {
     char name[32];
     path(name, kit, bank, idx);
     uint32_t seen = 0;
     unsigned got;
-    if (fw_f_open(FIL, name, FW_FA_READ) == 0) {
+    if (there && fw_f_open(FIL, name, FW_FA_READ) == 0) {
         uint32_t head[2];
         if (fw_f_read(FIL, head, 4, &got) == 0 && got == 4 && head[0] == MAGIC) {
             while (fw_f_read(FIL, head, 8, &got) == 0 && got == 8) {
@@ -102,7 +130,7 @@ static void read_file(const pk_store_t *t, int n, int kit, int bank, int idx)
 int PK_NEXT(pk4_store_pat_save)(uint8_t *hdr, int bank, int idx);
 void PK_NEXT(pk4_store_pat_clear)(int bank, int idx);
 void PK_NEXT(pk4_store_bank_load)(int bank);
-void PK_NEXT(pk4_store_kit_save)(int bank, int kit);
+int PK_NEXT(pk4_store_kit_save)(int bank, int kit);
 
 int pk4_store_pat_save(uint8_t *hdr, int bank, int idx)
 {
@@ -127,17 +155,41 @@ void pk4_store_pat_clear(int bank, int idx)
 void pk4_store_bank_load(int bank)
 {
     PK_NEXT(pk4_store_bank_load)(bank);
+    char dir[24];
+    uint32_t pat[2] = {0, 0}, kit[2] = {0, 0};
+    if (pk_n_store_pattern) {
+        fw_snprintf(dir, sizeof dir, "BANKS/%02d", bank);
+        listing(dir, "PAX", pat);
+    }
+    if (pk_n_store_kit) {
+        fw_snprintf(dir, sizeof dir, "BANKS/%02d/KITS", bank);
+        listing(dir, "KIX", kit);
+    }
     for (int idx = 0; idx < NIDX; idx++) {
         if (pk_n_store_pattern)
-            read_file(pk_store_pattern, pk_n_store_pattern, 0, bank, idx);
+            read_file(pk_store_pattern, pk_n_store_pattern, 0, bank, idx, pat[idx >> 5] >> (idx & 31) & 1);
         if (pk_n_store_kit)
-            read_file(pk_store_kit, pk_n_store_kit, 1, bank, idx);
+            read_file(pk_store_kit, pk_n_store_kit, 1, bank, idx, kit[idx >> 5] >> (idx & 31) & 1);
     }
 }
 
-void pk4_store_kit_save(int bank, int kit)
+/* kit_save's result (the kit file saved) makes the kit page flash the step: pass it on */
+int pk4_store_kit_save(int bank, int kit)
 {
-    PK_NEXT(pk4_store_kit_save)(bank, kit);
+    int r = PK_NEXT(pk4_store_kit_save)(bank, kit);
+    if (kit >= 0 && kit < NIDX)
+        write_file(pk_store_kit, pk_n_store_kit, 1, bank, kit);
+    return r;
+}
+
+void pk_store_save_pattern(int bank, int idx)
+{
+    if (idx >= 0 && idx < NIDX)
+        write_file(pk_store_pattern, pk_n_store_pattern, 0, bank, idx);
+}
+
+void pk_store_save_kit(int bank, int kit)
+{
     if (kit >= 0 && kit < NIDX)
         write_file(pk_store_kit, pk_n_store_kit, 1, bank, kit);
 }
