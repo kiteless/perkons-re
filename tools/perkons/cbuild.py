@@ -6,8 +6,8 @@ Generated headers (in <build>/gen/):
   fw_syms.h      #define SYM_<name> <addr> for every function/global in symbols/*.json
   + whatever the patch passes as extra_headers (e.g. tables generated from the emulator)
 
-The firmware interface headers in include/<core>/ (fw_m7.h, fw_m4.h) are always on the
-include path.
+The firmware interface headers in include/<core>/ (fw_m7.h, fw_m4.h) and the helpers in
+include/common/ (pk_util.h) are always on the include path.
 
 The cave has no startup code of its own, so the link fails if anything lands in .data.
 By default .bss is refused too and patch state lives at fixed RAM addresses chosen in the
@@ -25,6 +25,7 @@ import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FW_INCLUDE = {core: os.path.join(ROOT, 'include', core) for core in ('m4', 'm7')}
+COMMON_INCLUDE = os.path.join(ROOT, 'include', 'common')      # both cores: pk_util.h
 TOOLCHAIN = os.environ.get('ARM_GCC_PREFIX', 'arm-none-eabi-')
 CPU_FLAGS = {
     'm7': ['-mcpu=cortex-m7', '-mfpu=fpv5-d16'],
@@ -120,7 +121,7 @@ def build(core, src_files, include_dirs, build_dir, origin, entry, sym, extra_he
             f.write(LINKER_SCRIPT.format(origin=origin, length=max_len, entry=entry))
     elf = os.path.join(build_dir, 'cave.elf')
     flags = [*CPU_FLAGS[core], *CFLAGS, f'-I{gen}', *[f'-I{d}' for d in include_dirs],
-             f'-I{FW_INCLUDE[core]}', *[f'-D{k}={v}' for k, v in (defines or {}).items()]]
+             f'-I{FW_INCLUDE[core]}', f'-I{COMMON_INCLUDE}', *[f'-D{k}={v}' for k, v in (defines or {}).items()]]
     # one object per source, so the link map says which source each RAM variable is from
     objdir = os.path.join(build_dir, 'obj')
     os.makedirs(objdir, exist_ok=True)

@@ -63,6 +63,7 @@ typedef void (*fw_fx_proc_t)(const int16_t *in, int16_t *out);   /* 16 stereo fr
 
 #define FW_F32(addr)        (*(volatile float *)(uintptr_t)(addr))
 #define FW_U8(addr)         (*(volatile uint8_t *)(uintptr_t)(addr))
+#define FW_U16(addr)        (*(volatile uint16_t *)(uintptr_t)(addr))
 #define FW_U32(addr)        (*(volatile uint32_t *)(uintptr_t)(addr))
 
 /* effective FX controls computed by stock fx_update (after kit recall / pot catch) */

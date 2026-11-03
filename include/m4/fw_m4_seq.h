@@ -1,6 +1,5 @@
 /* Perkons M4: panel, sequencer, patterns and the modulation LFO, for patch code.
- * See docs/architecture.md ("Transport, keys and sequencer", "Panel and UI"). Offsets are
- * v1.3.0 layouts; addresses come from fw_syms.h. Included by fw_m4.h. */
+ * Offsets are v1.3.0 layouts; addresses come from fw_syms.h. Included by fw_m4.h. */
 #pragma once
 #include <stdint.h>
 
@@ -90,6 +89,14 @@
 #define FW_HDR_SIZE         0x20
 #define FW_HDR_REPEATS      0x14    /* master length */
 #define FW_HDR_BLOCK        0x18    /* -> 4 track blocks */
+#define FW_PATTERNS         64
+
+/* the pattern (0-63) a header pointer is, or -1 */
+static inline int fw_pattern_of(const void *hdr)
+{
+    uint32_t off = (uint32_t)(uintptr_t)hdr - (uint32_t)SYM_pat_headers;
+    return off < FW_PATTERNS * FW_HDR_SIZE && off % FW_HDR_SIZE == 0 ? (int)(off / FW_HDR_SIZE) : -1;
+}
 
 /* track block (CONST_track_block bytes): 16 steps, settings, 16 lock records */
 #define FW_STEPS            16
@@ -137,6 +144,12 @@
 #define fw_midi_out         FW_CALL(SYM_midi_out_bytes, void (*)(int port, uint32_t packed))
 #define fw_f_read           FW_CALL(SYM_f_read, int (*)(void *fil, void *buf, unsigned n, unsigned *got))
 #define fw_f_unlink         FW_CALL(SYM_f_unlink, int (*)(const char *path))
+#define fw_f_opendir        FW_CALL(SYM_f_opendir, int (*)(void *dir, const char *path))
+#define fw_f_readdir        FW_CALL(SYM_f_readdir, int (*)(void *dir, void *fno))   /* fname "" at the end */
+#define fw_f_closedir       FW_CALL(SYM_f_closedir, int (*)(void *dir))
+#define FW_FNO_NAME         0x16    /* FILINFO: fname (long names, 256 B) */
+#define FW_FNO_SIZE         (0x16 + 256)
+#define FW_DIR_MAX          0x80    /* a DIR object fits in this */
 #define fw_record           FW_CALL(SYM_seq_record, void (*)(uint8_t *locks, uint32_t slot, uint32_t value, int track, uint32_t step))
 #define fw_clear_slot       FW_CALL(SYM_seq_clear_slot, void (*)(uint8_t *locks, uint32_t slot))
 #define fw_track_clear      FW_CALL(SYM_track_clear, void (*)(uint8_t *vs))

@@ -9,6 +9,7 @@
 #pragma once
 #include <stdint.h>
 #include "fw_m7.h"
+#include "pk_util.h"          /* pk_irq_off / pk_irq_restore, pk_copy */
 
 int pk7_host_booted(void);
 

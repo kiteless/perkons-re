@@ -22,6 +22,7 @@
 #pragma once
 #include <stdint.h>
 #include "fw_m4.h"
+#include "pk_util.h"          /* pk_irq_off / pk_irq_restore, pk_copy */
 
 #define PK_AXI          __attribute__((section(".pk_axi")))
 
