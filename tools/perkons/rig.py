@@ -5,6 +5,7 @@
     rig.knob(0x21, 0.4); rig.moving.add(0x21)             # knob objects and their moved flags
     rig.press(0x47)                                       # a key event into the key handler
     rig.leds[0x4b]                                        # what set_led was last given
+    rig.set_step(0, 4, note=40); rig.play(); rig.run(8)   # clock the sequencer: what it sent
 
 stub_hardware(e, sym) is the part every M4 test needs (SD card present, DMA copies done
 directly, the DAC and filter-switch drivers silent) for harnesses of their own.
@@ -13,6 +14,7 @@ import os
 import struct
 
 from .emu import M4Emu, Symbols
+from .patch import thumb_bl_target
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EVT = 0x2407ff00            # scratch for key event structs (end of the sample area)
@@ -58,6 +60,15 @@ class M4Rig:
             e.w32(self.sym.g['knobs_ptr'], KNOB_AREA)
         self.knobs = e.r32(self.sym.g['knobs_ptr'])
         self._iter = []
+        # the key handler the image registers (mods chain theirs before the stock one)
+        site = self.sym.site('keys.handler_lit')['addr']
+        seg = img.segment('m4')
+        self.key_handler = struct.unpack_from('<I', seg.data, site - seg.addr)[0] & ~1
+        self.seq = e.r32(self.sym.g['seq_ptr'])
+        self.clock = self.sym.g['clock_state']
+        irq = 16 + self.sym.const['subtick_irq']
+        self.subtick_irq = struct.unpack_from('<I', seg.data, 4 * irq)[0] & ~1
+        self.tim = e.r32(e.r32(e.r32(self.sym.g['subtick_timer_ptr']) + 12))     # TIM registers
 
     # held steps, as the firmware's list of held step keys (value = row << 4 | col)
     def _held_first(self, emu, it, *_):
@@ -90,10 +101,11 @@ class M4Rig:
 
     # -- keys and UI modes ---------------------------------------------------------------
     def event(self, key, down, handler=None):
-        """A key event {key, 0x11 down / 0x10 up} into `handler` (default: key_event)."""
+        """A key event {key, 0x11 down / 0x10 up} into `handler` (default: the image's
+        registered key handler, so mods' key hooks run as on the unit)."""
         self.e.uc.mem_write(EVT, bytes([key, 0x11 if down else 0x10, 0, 0, 0, 0, 0, 0]))
         (self.held.add if down else self.held.discard)(key)
-        return self.e.call(handler or self.sym.fn['key_event'], EVT, max_insns=50_000_000)
+        return self.e.call(handler or self.key_handler, EVT, max_insns=50_000_000)
 
     def press(self, key, handler=None):
         self.event(key, True, handler)
@@ -103,7 +115,7 @@ class M4Rig:
         return self.e.call(self.sym.fn['get_mode'], max_insns=100_000)
 
     def set_mode(self, m):
-        """Request a UI mode and apply it, as the main loop does (FUN_081040c8)."""
+        """Request a UI mode and apply it, as the main loop does (apply_mode)."""
         self.e.call(self.sym.fn['set_mode'], m, max_insns=100_000)
         self.e.call(self.sym.fn['apply_mode'], max_insns=5_000_000)
 
@@ -117,3 +129,77 @@ class M4Rig:
 
     def voice_state(self, track):
         return self.e.r32(self.e.r32(self.sym.g['seq_ptr']) + 4) + track * 0x10c
+
+    # -- the sequencer, clocked as the firmware does ---------------------------------------
+    # The clock interrupt starts each step (clock+0x22 sub-tick reset, +0x20 beat count,
+    # tick callback +0x3c with 1); the sub-tick timer interrupt then advances +0x22 and
+    # calls tick(0), (+0x1c x +0x1e) per step.
+    def r16(self, a):
+        return struct.unpack('<H', bytes(self.e.uc.mem_read(a, 2)))[0]
+
+    def w16(self, a, v):
+        self.e.uc.mem_write(a, struct.pack('<H', v & 0xffff))
+
+    def block(self, track):
+        return self.e.r32(self.voice_state(track) + 4)
+
+    def set_step(self, track, step, note=36, velocity=100, on=True):
+        """A step record: +0 on, +6 note (36: no shift), +7 velocity."""
+        a = self.block(track) + 8 * step
+        self.e.w8(a, 1 if on else 0)
+        self.e.w8(a + 6, note)
+        self.e.w8(a + 7, velocity)
+
+    def play(self):
+        self.e.w8(self.seq, 1)
+        self.e.w8(self.seq + 1, 1)
+
+    def subtick(self):
+        self.e.w32(self.tim + 0x10, 1)                   # TIM SR: update interrupt pending
+        self.e.call(self.subtick_irq, max_insns=5_000_000)
+
+    def step(self):
+        c = self.clock
+        self.w16(c + 0x22, 0)
+        self.w16(c + 0x20, self.r16(c + 0x20) + 1)
+        self.e.call(self.e.r32(c + 0x3c) & ~1, 1, max_insns=5_000_000)
+        for _ in range(self.r16(c + 0x1c) * self.r16(c + 0x1e) - 1):
+            self.subtick()
+
+    def run(self, steps):
+        """Clock `steps` steps; [(step, triggers, midi)] for the steps that sent anything:
+        triggers [[(track, note)] per trigger message], midi [bytes]."""
+        out = []
+        for i in range(steps):
+            self.step()
+            trig = [self.decode_trigger(p) for typ, p in self.e.sent(2) if typ == 0]
+            midi = [self.decode_midi(m) for m in self.midi]
+            self.midi.clear()
+            if trig or midi:
+                out.append((i, trig, midi))
+        return out
+
+    def switch_to(self, p):
+        """What the PATTERN page does when stopped: queue pattern p, switch now, then the
+        main loop's switch-done step."""
+        f = self.sym.fn
+        self.e.call(f['seq_queue'], self.sym.g['pat_headers'] + 0x20 * p, max_insns=5_000_000)
+        self.e.call(f['seq_switch_now'], max_insns=5_000_000)
+        self.e.call(self.call_target('main.call_switch_done'), max_insns=50_000_000)
+
+    def call_target(self, site):
+        """What the `bl` at a call site calls in this image (a mod's hook chain, or stock)."""
+        a = self.sym.site(site)['addr']
+        seg = self.img.segment('m4')
+        return thumb_bl_target(a, seg.data[a - seg.addr:a - seg.addr + 4])
+
+    @staticmethod
+    def decode_trigger(payload):
+        """[(track, note)] for the tracks a trigger message turns on."""
+        return [(t, payload[4 * t + 2]) for t in range(len(payload) // 4) if payload[4 * t]]
+
+    @staticmethod
+    def decode_midi(m):
+        """(port, packed) from midi_out_bytes -> the message bytes."""
+        packed = m[1]
+        return bytes((packed >> (8 * i)) & 0xff for i in range(min(packed >> 24, 3)))

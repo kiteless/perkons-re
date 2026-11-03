@@ -31,7 +31,7 @@ class TestCardDirectories(unittest.TestCase):
         s4 = Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))
         img = Image.load(require_image('v1.3.0'))
         e = M4Emu(img.segment('m4').data, s4, img.segment('m7').data,
-                  sd={'BANKS/00/00.PAT': b'x', 'BANKS/00/KITS/01.KIT': b'yy', 'voices.json': b'{}'}).boot()
+                  sd={'BANKS/00/00.PAT': b'x', 'BANKS/00/KITS/01.KIT': b'yy', 'INFO.TXT': b'z'}).boot()
         buf, dp, fno = 0x2407e000, 0x2407e100, 0x2407e200
         e.uc.mem_write(buf, b'BANKS/00\0')
         self.assertEqual(e.call(s4.fn['f_stat'], buf, fno), 0)

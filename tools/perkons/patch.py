@@ -197,6 +197,17 @@ def thumb_bl(src, dst, link=True):
     return struct.pack('<HH', hw1, hw2)
 
 
+def thumb_bl_target(src, insn: bytes):
+    """Where the BL / B.W `insn` at src jumps (thumb_bl's inverse)."""
+    hw1, hw2 = struct.unpack('<HH', insn[:4])
+    s = (hw1 >> 10) & 1
+    i1, i2 = 1 - (((hw2 >> 13) & 1) ^ s), 1 - (((hw2 >> 11) & 1) ^ s)
+    off = (s << 24) | (i1 << 23) | (i2 << 22) | ((hw1 & 0x3FF) << 12) | ((hw2 & 0x7FF) << 1)
+    if s:
+        off -= 1 << 25
+    return src + 4 + off
+
+
 def thumb_str_imm(rt, rn, imm):
     """16-bit STR Rt, [Rn, #imm] (low regs, imm multiple of 4, <= 124)."""
     assert rt < 8 and rn < 8 and imm % 4 == 0 and 0 <= imm <= 124

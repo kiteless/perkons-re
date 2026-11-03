@@ -29,7 +29,7 @@ help:
 	@echo "make ghidra VER=v1.3.0              import + analyze both cores into ghidra/projects/"
 	@echo "make check-symbols VER=v1.3.0       behavioural checks of symbols/<VER>-*.json"
 	@echo "make port FROM=v1.3.0 TO=v1.4.0     port symbols to a new firmware (see docs/porting.md)"
-	@echo "make decompile CORE=m7 FN='main 0x08023ea4'   pseudo-C into ghidra/out/"
+	@echo "make decompile CORE=m7 FN='main wire_voices'   pseudo-C into ghidra/out/"
 	@echo
 	@echo "mods (out-of-tree patches): PERKONS_MODS=$(PERKONS_MODS)"
 
