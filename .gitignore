@@ -19,3 +19,6 @@ local.mk
 __pycache__/
 *.pyc
 .DS_Store
+
+# build and measurement caches (tools/perkons/srchash.py)
+.cache/

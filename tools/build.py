@@ -9,7 +9,8 @@ optionally with an argument: name:arg. After building, it:
   2. boots the patched M7 through main()'s real wiring code in the emulator and reports
      which engine each output runs
   3. for every output/algo/mode, renders it through the real message handling and audio
-     callback and checks it's bit-identical to the stock engine it runs (rand() pinned)
+     callback and checks it's bit-identical to the stock engine it runs (rand() pinned);
+     skipped when no mod code runs on the M7 (no M7 host: the voices are stock code)
 """
 import argparse
 import os
@@ -57,11 +58,20 @@ def build_image(base, out_path, specs, symbols_m7, build_dir=None, extra_kwargs=
     return chk, p
 
 
-def regression(base, chk, symbols_m7):
-    """Every output/algo/mode vs the stock engine it runs. Returns the failing cases."""
+def m7_code(p):
+    """Whether the build put mod code on the M7 (the M7 host links all of it)."""
+    return getattr(p, 'm7host', None) is not None
+
+
+def regression(base, chk, symbols_m7, renders=True):
+    """Every output/algo/mode vs the stock engine it runs. Returns the failing cases.
+    renders=False: the boot and engine check only (no mod code on the M7)."""
     sym = Symbols(symbols_m7)
     emap = verify.engine_map(chk, sym)
     print('emulated boot OK; outputs run stock voice engines:', ' '.join(str(v + 1) for v in emap))
+    if not renders:
+        print('no mod code on the M7: its voices are stock, renders skipped')
+        return []
     print('checking every output/algo/mode against stock (36 renders x2)...')
     res = verify.compare_to_stock(base, chk, sym)
     bad = [r for r in res if not r[4]]
@@ -81,9 +91,9 @@ def main():
     a = ap.parse_args()
 
     base = Image.load(a.base)
-    chk, _ = build_image(base, a.out, a.patches, a.symbols)
+    chk, p = build_image(base, a.out, a.patches, a.symbols)
     if not a.no_emu:
-        regression(base, chk, a.symbols)
+        regression(base, chk, a.symbols, renders=m7_code(p))
 
 
 if __name__ == '__main__':

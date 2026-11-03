@@ -34,12 +34,31 @@ def require_image(version):
     return p
 
 
+class Built:
+    """What a cached build hands back in place of its Patcher: the linked symbols."""
+
+    def __init__(self, cave_symbols):
+        self.cave_symbols = cave_symbols
+
+
 def build_patched(stock, names, build_dir):
     """Apply patch specs `names` ('name' or 'name:arg', this repo or PERKONS_MODS) to the
-    v1.3.0 image `stock`. Returns (Image, Patcher)."""
+    v1.3.0 image `stock`. Returns (Image, Patcher), or (Image, Built) from the build cache
+    (.cache/builds/, keyed by every build input: tests that build the same image share it,
+    across processes and runs)."""
+    import hashlib
+    import json
+    from perkons import srchash
     from perkons.emu import Symbols
+    from perkons.fwimage import Image
     from perkons.mods import load_patch
     from perkons.patch import Patcher
+    base = hashlib.sha256(b''.join(seg.data for seg in stock.segments)).hexdigest()
+    k = srchash.key(base, *names)
+    img_path, sym_path = srchash.path('builds', k, '.img'), srchash.path('builds', k, '.json')
+    if os.path.exists(img_path) and os.path.exists(sym_path):
+        with open(sym_path) as f:
+            return Image.load(img_path), Built(json.load(f))
     p = Patcher(stock)
     p.symbols = {'m7': Symbols(SYMBOLS_V130), 'm4': Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))}
     p.build_dir = build_dir
@@ -47,4 +66,14 @@ def build_patched(stock, names, build_dir):
         name, _, arg = spec.partition(':')
         mod = load_patch(name)
         mod.apply(p, arg) if arg else mod.apply(p)
-    return p.result(), p
+    img = p.result()
+    for path, write in ((img_path, img.save), (sym_path, lambda t: _dump(getattr(p, 'cave_symbols', {}), t))):
+        write(path + '.tmp')
+        os.replace(path + '.tmp', path)             # whole files only: tests run in parallel
+    return img, p
+
+
+def _dump(obj, path):
+    import json
+    with open(path, 'w') as f:
+        json.dump(obj, f)
