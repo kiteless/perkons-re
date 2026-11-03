@@ -12,11 +12,78 @@ literal holding a function pointer (word). A host collects every registration, t
 * after the link, points each site at its guard.
 
 A word that is not a code pointer is a data pointer: replaced outright, by one mod only.
+
+BaseHost is what both cores' hosts (m4host, m7host) share: the mods' sources, defines and
+generated headers, their hook registrations, and the link.
 """
+import os
+
+from . import cbuild
 
 
 class HostError(Exception):
     pass
+
+
+class BaseHost:
+    core = None                             # 'm4' / 'm7'
+
+    def __init__(self, p):
+        self.p = p
+        self.sources, self.include_dirs, self.inits = [], [], []
+        self.defines, self.headers = {}, {}  # generated headers: name -> text or callable
+        self.hooks = []                      # (kind, site, symbol, why, order)
+        self.syms = None
+
+    def add(self, sources, include_dirs=(), init=None, defines=None, headers=None):
+        """C sources to link; init: a void(void) function the host runs at boot; defines:
+        {name: value} for every source in the link; headers: {name: text, or a function
+        returning it, called at link time (e.g. built from other mods' registrations)}."""
+        self.sources += [s for s in sources if s not in self.sources]
+        self.include_dirs += [d for d in include_dirs if d not in self.include_dirs]
+        if init and init not in self.inits:
+            self.inits.append(init)
+        for k, v in (defines or {}).items():
+            if self.defines.get(k, v) != v:
+                raise HostError(f'define {k}: {v} clashes with {self.defines[k]}')
+            self.defines[k] = v
+        for k, v in (headers or {}).items():
+            if k in self.headers and self.headers[k] is not v:
+                raise HostError(f'generated header {k} registered twice')
+            self.headers[k] = v
+
+    def redirect_call(self, site, symbol, why, order=0):
+        """Site is `bl <fn>`: the call goes to `symbol` (chained with other mods' hooks)."""
+        self.hooks.append(('call', site, symbol, why, order))
+
+    def redirect_branch(self, site, symbol, why, order=0):
+        """Site is a tail call `b.w <fn>`: it goes to `symbol` (chained)."""
+        self.hooks.append(('branch', site, symbol, why, order))
+
+    def replace_word(self, site, symbol, why, order=0):
+        """Site is a literal: a function pointer (odd) is chained like a call; a data
+        pointer is replaced outright (one mod only)."""
+        self.hooks.append(('word', site, symbol, why, order))
+
+    def link(self, prefix, host_sources, entry, gen, chains, nxt, events, magic_symbol, magic, **kw):
+        """Compile and link the host's sources, the mods' and the generated ones (<prefix>_gen.c:
+        `gen`, <prefix>_chains.c: the hook chains, see collect) into this core's cave.
+        Returns the blob; self.syms gets the linked symbols."""
+        try:
+            blob, self.syms = cbuild.build(
+                self.core, host_sources + self.sources, self.include_dirs,
+                os.path.join(self.p.build_dir, f'{self.core}host'), self.p.cave_origin(self.core), entry,
+                self.p.symbols[self.core], defines=self.defines,
+                extra_headers={k: v() if callable(v) else v for k, v in sorted(self.headers.items())},
+                extra_sources={f'{prefix}_gen.c': gen,
+                               f'{prefix}_chains.c': gen_source(chains, nxt, events, magic_symbol, magic)}, **kw)
+        except cbuild.BuildError as e:
+            unreg = unregistered(e)
+            if unreg:
+                raise HostError(f'{", ".join(unreg)}: call PK_NEXT but are not registered as hooks '
+                                '(h.redirect_call / redirect_branch / replace_word)') from None
+            raise
+        return blob
 
 
 def collect(sym, hooks, flash, event_links=()):

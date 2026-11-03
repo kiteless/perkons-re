@@ -5,7 +5,8 @@
     def apply(p, arg=None):
         h = m7host.host(p)
         h.add([os.path.join(SRC, 'my_engine.c')], [SRC], init='pk_my_init')   # init: after wire_voices
-        h.message('my-msg', 'pk_my_msg')     # stream-3 config message: void f(const uint8_t *, uint32_t len)
+        h.message('my-msg', 'pk_my_msg')     # config message: void f(const uint8_t *, uint32_t len)
+        h.message('my-msg', 'pk_my_msg', ordered=True)   # ... in order with the trigger messages
         h.redirect_call('some.site', 'pk_my_hook', 'why')                      # chained (perkons.hooks)
         h.before_link(fn)                    # fn() runs first at link time: register late sources
 
@@ -14,7 +15,10 @@ RAM zeroed, then their inits, before main inits the voices), main's receive of u
 config messages (pk7_cfg_recv: dispatched by type to the handlers) and the _sbrk cap
 (the newlib heap stays below the VOICE area, ram.py). Message types are given out by name
 (message_types(p), 4 and up: 0-3 are the firmware's) and are PK_MSG_<NAME> in both cores'
-builds, so the M4 side sends what the M7 side expects.
+builds, with PK_STREAM_<NAME> the stream to send them on, so the M4 side sends what the M7
+side expects. Ordered messages go on the trigger stream (2) and are handled in the audio
+callback, before the trigger messages queued after them; the others on the config stream
+(3), in the M7's main loop.
 
 RAM: .bss goes in the top HOST_RAM bytes of the VOICE area, zeroed at boot. Mods with
 fixed ranges (voice-map's engine arenas) record them with p.ram_use('voice', ...).
@@ -22,7 +26,7 @@ fixed ranges (voice-map's engine arenas) record them with p.ram_use('voice', ...
 import os
 
 from . import cbuild, hooks
-from .hooks import HostError
+from .hooks import BaseHost, HostError
 from . import ram
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -49,52 +53,38 @@ def message_types(p):
 
 
 def message_defines(p):
-    return {'PK_MSG_' + n.upper().replace('-', '_'): str(t) for n, t in message_types(p).items()}
+    out = {}
+    ordered = p.shared.get('m7host_ordered', set())
+    for n, t in message_types(p).items():
+        name = n.upper().replace('-', '_')
+        out['PK_MSG_' + name] = str(t)
+        out['PK_STREAM_' + name] = '2' if n in ordered else '3'
+    return out
 
 
-class Host:
+class Host(BaseHost):
+    core = 'm7'
+
     def __init__(self, p):
-        self.p = p
-        self.sources, self.include_dirs, self.inits, self.late = [], [], [], []
-        self.defines, self.headers = {}, {}
-        self.hooks, self.exclusive = [], []
-        self.syms = None
+        super().__init__(p)
+        self.late, self.exclusive = [], []
 
-    def add(self, sources, include_dirs=(), init=None, defines=None, headers=None):
-        """C sources to link; init: void(void), run at boot after wire_voices; defines and
-        headers ({name: text or a function returning it}) as for the M4 host."""
-        self.sources += [s for s in sources if s not in self.sources]
-        self.include_dirs += [d for d in include_dirs if d not in self.include_dirs]
-        if init and init not in self.inits:
-            self.inits.append(init)
-        for k, v in (defines or {}).items():
-            if self.defines.get(k, v) != v:
-                raise HostError(f'define {k}: {v} clashes with {self.defines[k]}')
-            self.defines[k] = v
-        for k, v in (headers or {}).items():
-            if k in self.headers and self.headers[k] is not v:
-                raise HostError(f'generated header {k} registered twice')
-            self.headers[k] = v
-
-    def message(self, name, handler):
-        """Stream-3 config message `name` (its type: message_types) -> `void handler(const
-        uint8_t *buf, uint32_t len)`, once the host has booted."""
+    def message(self, name, handler, ordered=False):
+        """Message `name` (its type: message_types) -> `void handler(const uint8_t *buf,
+        uint32_t len)`, once the host has booted. ordered: sent on the trigger stream and
+        handled in the audio callback, in order with the triggers (keep the handler short);
+        else on the config stream, handled in the M7's main loop."""
         msgs = self.p.shared.setdefault('m7host_messages', {})
         if msgs.get(name, handler) != handler:
             raise HostError(f'config message {name} already handled by {msgs[name]}')
         msgs[name] = handler
+        if ordered:
+            self.p.shared.setdefault('m7host_ordered', set()).add(name)
+            self.redirect_call('audio_cb.call_poll_triggers', 'pk7_poll_triggers',
+                               'audio callback: ordered messages before the triggers after them')
 
     def before_link(self, fn):
         self.late.append(fn)
-
-    def redirect_call(self, site, symbol, why, order=0):
-        self.hooks.append(('call', site, symbol, why, order))
-
-    def redirect_branch(self, site, symbol, why, order=0):
-        self.hooks.append(('branch', site, symbol, why, order))
-
-    def replace_word(self, site, symbol, why, order=0):
-        self.hooks.append(('word', site, symbol, why, order))
 
     def replace_with_call(self, site, symbol, why):
         """Site is a 4-byte instruction: replace it with `bl symbol` (one mod only)."""
@@ -107,7 +97,11 @@ class Host:
                  'typedef struct { uint32_t type; void (*fn)(const uint8_t *, uint32_t); } pk7_msg_t;']
         lines += [f'void {fn}(const uint8_t *, uint32_t);' for _, fn in msgs]
         rows = ''.join(f'{{{types[n]}, {fn}}}, ' for n, fn in msgs) or '{0, 0}'
+        ordered = self.p.shared.get('m7host_ordered', set())
         lines += [f'const pk7_msg_t pk7_msgs[] = {{{rows}}};', f'const int pk7_n_msgs = {len(msgs)};']
+        rows = ''.join(f'{{{types[n]}, {fn}}}, ' for n, fn in msgs if n in ordered) or '{0, 0}'
+        lines += [f'const pk7_msg_t pk7_ordered[] = {{{rows}}};',
+                  f'const int pk7_n_ordered = {len([n for n, _ in msgs if n in ordered])};']
         lines += [f'void {f}(void);' for f in self.inits]
         lines.append('void pk7_run_inits(void) {' + ''.join(f' {f}();' for f in self.inits) + ' }')
         return '\n'.join(lines) + '\n'
@@ -122,20 +116,12 @@ class Host:
         chains, data, nxt = hooks.collect(sym, self.hooks, FLASH)
         lo, hi = ram.areas(p.symbols)['voice']
         bss = (hi - HOST_RAM, HOST_RAM)
+        srcs = [os.path.join(HOST_SRC, 'pk7_host.c')]
+        if p.shared.get('m7host_ordered'):
+            srcs.append(os.path.join(HOST_SRC, 'pk7_host_ordered.c'))
         origin = p.cave_origin('m7')
-        try:
-            blob, self.syms = cbuild.build(
-                'm7', [os.path.join(HOST_SRC, 'pk7_host.c')] + self.sources, self.include_dirs,
-                os.path.join(p.build_dir, 'm7host'), origin, 'pk7_boot', sym, ram=bss, defines=self.defines,
-                extra_headers={k: v() if callable(v) else v for k, v in sorted(self.headers.items())},
-                extra_sources={'pk7_host_gen.c': self.gen_source(),
-                               'pk7_host_chains.c': hooks.gen_source(chains, nxt, {}, 'pk7_host_magic',
-                                                                     PK7_HOST_MAGIC)})
-        except cbuild.BuildError as e:
-            unreg = hooks.unregistered(e)
-            if unreg:
-                raise HostError(f'{", ".join(unreg)}: call PK_NEXT but are not registered as hooks') from None
-            raise
+        blob = self.link('pk7_host', srcs, 'pk7_boot', self.gen_source(), chains, nxt, {},
+                         'pk7_host_magic', PK7_HOST_MAGIC, ram=bss)
         assert p.append('m7', blob, f'M7 host + mods ({len(blob)} B)', align=16) == origin
         used = sum(size for size in cbuild.ram_sections(os.path.join(p.build_dir, 'm7host')).values())
         p.ram_use('voice', 'm7host', (used + 3) & ~3, bss[0])

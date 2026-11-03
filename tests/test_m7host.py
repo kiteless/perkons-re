@@ -74,6 +74,17 @@ class TestM7Host(unittest.TestCase):
         e.audio(50)
         self.assertGreater(e.r32(s['pk7_demo_renders']), 0)
 
+    def test_ordered_message_is_handled_before_the_triggers_after_it(self):
+        p, img, s = self.build(lambda p, h: h.message('aa-ord', 'pk7_demo_msg', ordered=True))
+        self.assertEqual(m7host.message_defines(p)['PK_STREAM_AA_ORD'], '2')
+        self.assertEqual(m7host.message_defines(p)['PK_STREAM_ZZ_DEMO'], '3')
+        e = verify.boot(img, self.s7)
+        e.send(2, 4, b'\x07')
+        e.send_triggers([1, 0, 0, 0], [(0, 0)] * 4)
+        out = e.audio(2000)[0]
+        self.assertEqual(e.r32(s['pk7_demo_got']), 7 | 1 << 8)
+        self.assertGreater(max(map(abs, out)), 300, 'the trigger behind it still plays')
+
     def test_same_message_two_handlers_refused(self):
         with self.assertRaises(m7host.HostError):
             self.build(lambda p, h: h.message('zz-demo', 'pk7_demo_other'))
