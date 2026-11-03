@@ -73,7 +73,8 @@ def regression(base, chk, symbols_m7, renders=True):
         print('no mod code on the M7: its voices are stock, renders skipped')
         return []
     print('checking every output/algo/mode against stock (36 renders x2)...')
-    res = verify.compare_to_stock(base, chk, sym)
+    res = verify.compare_to_stock(base, chk, sym, progress=lambda: print('.', end='', flush=True))
+    print()
     bad = [r for r in res if not r[4]]
     print(f'{len(res) - len(bad)}/{len(res)} identical to the stock engine they run')
     for out, algo, mode, eng, _ in bad:

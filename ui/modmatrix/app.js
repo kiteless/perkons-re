@@ -650,7 +650,7 @@ async function build() {
       snap = await api(`/api/job/${job}?since=${since}`);
       since = snap.next;
       all.push(...snap.log);
-      logLines(all);
+      logLines(snap.partial ? [...all, snap.partial] : all);   // the renders' dots as they come
       if (snap.state !== "running") break;
     }
     if (snap.state === "done") {

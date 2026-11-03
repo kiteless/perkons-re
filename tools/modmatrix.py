@@ -19,7 +19,8 @@ API (JSON unless noted):
                                 options: {id: {area: {owner: bytes}}}, errors: {id: text}}
   POST /api/build              {image, options: [mod ids], voices: [voice ids, slot order],
                                checks: bool} -> {job}
-  GET  /api/job/<id>           {state: running|done|failed, log: [...], download}
+  GET  /api/job/<id>           {state: running|done|failed, log: [...], partial: the line being
+                               written (progress dots), download}
   GET  /api/download/<id>      the built image (application/octet-stream)
 """
 import argparse
@@ -62,6 +63,7 @@ class LineLog(io.TextIOBase):
         *lines, self.buf = self.buf.split('\n')
         for line in lines:
             self.job.say(line)
+        self.job.partial = self.buf
         return len(s)
 
 
@@ -70,6 +72,7 @@ class Job:
         self.id = uuid.uuid4().hex[:12]
         self.img, self.raw, self.chosen, self.specs, self.checks = img, raw, chosen, specs, checks
         self.state, self.log, self.out, self.name = 'running', [], None, None
+        self.partial = ''                    # the line being written, not yet in log
         self.lock = threading.Lock()
 
     def say(self, line):
@@ -78,7 +81,7 @@ class Job:
 
     def snapshot(self, since=0):
         with self.lock:
-            return {'state': self.state, 'log': self.log[since:], 'next': len(self.log),
+            return {'state': self.state, 'log': self.log[since:], 'next': len(self.log), 'partial': self.partial,
                     'download': f'/api/download/{self.id}' if self.state == 'done' else None,
                     'name': self.name}
 

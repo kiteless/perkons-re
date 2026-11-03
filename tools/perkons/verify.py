@@ -36,16 +36,21 @@ def render_output(img, sym, out, algo, mode, n=6000, params=DEFAULT_PARAMS):
     return e.audio(n)[out]
 
 
-def compare_to_stock(stock, patched, sym, algos=range(3), modes=range(3), n=6000):
+def compare_to_stock(stock, patched, sym, algos=range(3), modes=range(3), n=6000, progress=None):
     """For every output, check it renders exactly what the stock engine it runs renders
-    at that engine's home output. Returns a list of (out, algo, mode, engine, ok)."""
+    at that engine's home output. Returns a list of (out, algo, mode, engine, ok).
+    progress: called after each render (two per case: patched, then stock)."""
     results = []
     emap = engine_map(patched, sym)
     for out in range(4):
         for algo in algos:
             for mode in modes:
                 got = render_output(patched, sym, out, algo, mode, n)
+                if progress:
+                    progress()
                 ref = render_output(stock, sym, emap[out], algo, mode, n)
+                if progress:
+                    progress()
                 results.append((out, algo, mode, emap[out], got == ref))
     return results
 

@@ -119,6 +119,15 @@ class TestModMatrix(unittest.TestCase):
             os.utime(mod_json, ns=(st.st_atime_ns, st.st_mtime_ns))
         self.assertFalse(self.app.status()['stale'])
 
+    def test_job_log_shows_the_line_being_written(self):
+        """Progress dots (print('.', end='')) reach the page before their line ends."""
+        job = modmatrix.Job(None, b'', [], [], False)
+        out = modmatrix.LineLog(job)
+        out.write('checking:\n..')
+        self.assertEqual((job.snapshot()['log'], job.snapshot()['partial']), (['checking:'], '..'))
+        out.write('.\ndone\n')
+        self.assertEqual((job.snapshot()['log'], job.snapshot()['partial']), (['checking:', '...', 'done'], ''))
+
     def test_server_serves_the_page(self):
         code, page = self.call('/')
         self.assertEqual(code, 200)
