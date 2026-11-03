@@ -106,6 +106,19 @@ class TestModMatrix(unittest.TestCase):
         code, j = self.call('/api/build', json_body={'image': 'nope', 'options': ['tag']})
         self.assertEqual(code, 400)
 
+    def test_status_says_when_the_server_is_out_of_date(self):
+        """A server started before its code or the mods changed on disk serves a newer page
+        than its own Python: the status says so."""
+        self.assertFalse(self.app.status()['stale'])
+        mod_json = os.path.join(os.environ['PERKONS_MODS'], 'mod.json')
+        st = os.stat(mod_json)
+        os.utime(mod_json, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+        try:
+            self.assertTrue(self.app.status()['stale'])
+        finally:
+            os.utime(mod_json, ns=(st.st_atime_ns, st.st_mtime_ns))
+        self.assertFalse(self.app.status()['stale'])
+
     def test_server_serves_the_page(self):
         code, page = self.call('/')
         self.assertEqual(code, 200)

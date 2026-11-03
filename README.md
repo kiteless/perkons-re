@@ -64,13 +64,16 @@ py start_modmatrix.py
 The first time, this sets things up for you: a private Python environment inside the
 `perkons-re` folder, and the mods, downloaded next to it into `perkons-re-mods`. Then
 the Mod Matrix opens in your browser at http://127.0.0.1:6464/. If something is
-missing, the script says what to install. To stop it, press Ctrl-C in the terminal.
+missing, the script says what to install. To stop it, press Ctrl-C in the terminal. After
+updating perkons-re or the mods, stop it and start it again (the page says so if you
+don't).
 Next time, just run step 3 again (in the `perkons-re` folder).
 
 ### 4. Build your firmware
 
-1. Drop the official `perkons_v1.3.0-0-force.img` on the page (or click to choose it). It
-   only accepts an unmodified official image.
+1. The start screen asks for your firmware: drop the official `perkons_v1.3.0-0-force.img`
+   on it (or click to choose it). It only accepts an unmodified official image; once it has
+   loaded, the Mod Matrix opens with it. To use another image, reload the page.
 2. On the **MODS** tab, tick the mods you want. Some need another mod; the page ticks it
    for you.
 3. To add voice engines, go to the **ENGINES** tab, tick **ENABLE CUSTOM VOICE ENGINES**
@@ -190,7 +193,7 @@ patches in either place. See `tools/perkons/mods.py`.
 
 ## Mod Matrix
 
-`python3 start_modmatrix.py` (or `make ui`, `UI_ARGS=--no-intro` to skip the intro) runs
+`python3 start_modmatrix.py` (or `make ui`, `UI_ARGS=--no-intro` to skip the start screen's animation) runs
 `tools/modmatrix.py`: a Python standard-library server on 127.0.0.1 and a plain
 HTML/JS page in `ui/modmatrix/`. It reads only the image's header (version), CRCs and
 hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the build with

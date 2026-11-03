@@ -1,4 +1,5 @@
-/* Perkons Mod Matrix front end: loader intro, sine scroller, the three steps, memory meters.
+/* Perkons Mod Matrix front end: the start screen (loads the firmware), sine scroller, the mods
+ * and engines, memory meters.
  * Talks to tools/modmatrix.py on the same origin. Needs font.js (FONT, C64, drawText, wrap). */
 "use strict";
 
@@ -72,31 +73,121 @@ function pix(tag, cls, text, extra) {
   return el;
 }
 
-/* ---- intro: the loader screen with flashing raster stripes in the border ---- */
+/* ---- intro: the start screen. READY. and the dashed drop box for the firmware; once it's
+ * dropped or chosen, LOAD"<its name>",8,1 is typed at the cursor, with raster stripes in the border while
+ * the server inspects it. A good image RUNs the Mod Matrix with it loaded (done(info)); a
+ * bad one gets an error and the prompt again. Click or a key skips the animation; quick
+ * (--no-intro) skips it always. ---- */
 
-function intro(done) {
+function intro(status, done, quick) {
   const box = $("intro");
   const cv = $("intro-canvas");
   const ctx = cv.getContext("2d");
-  const lines = [
-    "    **** PERKONS 64 MOD MATRIX V1 ****",
-    " 64K RAM SYSTEM  38911 BASIC BYTES FREE",
-    "",
-    "READY.",
-  ];
-  const typed = 'LOAD"*",8,1';
-  const T_TYPE = 0.5, T_SEARCH = 1.4, T_LOAD = 1.9, T_END = 4.2;
-  let start = null, finished = false, lastStripes = 0, stripes = [];
+  const COLS = 40, ROWS = 25;
+  const DROP = wrap("DROP YOUR OFFICIAL PERKONS .IMG HERE OR CLICK TO BROWSE", COLS - 4);
+  const BOX_ROWS = DROP.length + 2;                  // a blank row above and below the text
+  const scr = [];
+  let phase = "wait", typing = null, loading = false, finished = false, fast = false, skip = null;
+  let lastStripes = 0, stripes = [], hot = false, dropBox = null;   // dropBox: [x, y, w, h], CSS px
 
-  function finish() {
+  // print: word-wrapped like a message; hard: cut at the 40th column, as typed lines are
+  const print = (text, hard) => {
+    const lines = hard ? (text.match(/.{1,40}/g) || [""]) : text.length <= COLS ? [text] : wrap(text, COLS);
+    scr.push(...lines);
+    scr.splice(0, Math.max(0, scr.length - ROWS));
+  };
+  ["    **** PERKONS 64 MOD MATRIX V1 ****", " 64K RAM SYSTEM  38911 BASIC BYTES FREE", "", "READY."].forEach((l) => print(l));
+  if (status && status.stale) {
+    print("?OUT OF DATE ERROR");
+    print("THE MOD MATRIX WAS UPDATED SINCE IT STARTED. STOP IT (CTRL-C) AND START IT AGAIN.");
+    phase = "dead";
+  }
+
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = ".img";
+  picker.className = "sr";
+  box.append(picker);
+  picker.addEventListener("change", () => picker.files[0] && load(picker.files[0]));
+
+  const sleep = (sec) => new Promise((r) => {
+    const t = setTimeout(r, fast ? 0 : sec * 1000);
+    skip = () => { clearTimeout(t); r(); };
+  });
+  async function type(text) {
+    for (let n = 1; n <= text.length; n++) { typing = text.slice(0, n); await sleep(1 / 24); }
+    typing = null;
+    print(text, true);
+  }
+  function problem(r) {
+    if (r.error) return ["?FILE ERROR", r.error.message.toUpperCase()];
+    const id = `PERKONS ${r.info.version} (${r.info.git.toUpperCase()})`;
+    if (!r.info.official) return ["?NOT OFFICIAL ERROR", `${id} IS NOT AN OFFICIAL IMAGE WE KNOW (ALREADY MODDED?). LOAD THE ONE FROM ERICA SYNTHS.`];
+    if (!r.info.supported) return ["?VERSION ERROR", `${id} IS OFFICIAL, BUT NOT SUPPORTED YET.`];
+    return null;
+  }
+
+  async function load(file) {
+    if (phase !== "wait") return;
+    phase = "load";
+    fast = !!quick;
+    const name = file.name.toUpperCase();
+    const result = api("/api/inspect", { method: "POST", body: file }).then((info) => ({ info }), (error) => ({ error }));
+    await sleep(0.4);
+    await type(`LOAD"${name}",8,1`);
+    await sleep(0.4);
+    print("");
+    print(`SEARCHING FOR ${name}`, true);
+    await sleep(0.6);
+    print("LOADING");
+    loading = true;
+    const [r] = await Promise.all([result, sleep(2.2)]);
+    loading = false;
+    const err = problem(r);
+    if (!err) {
+      print("READY.");
+      await type("RUN");
+      await sleep(0.3);
+      return finish(r.info);
+    }
+    err.forEach((l) => print(l));
+    print("");
+    print("READY.");
+    picker.value = "";
+    phase = "wait";
+  }
+
+  function onKey(e) {
+    if (phase === "wait" && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); picker.click(); }
+    else if (phase === "load") { fast = true; if (skip) skip(); }
+  }
+  const inBox = (e) => dropBox && e.clientX >= dropBox[0] && e.clientX < dropBox[0] + dropBox[2] &&
+    e.clientY >= dropBox[1] && e.clientY < dropBox[1] + dropBox[3];
+  box.addEventListener("click", (e) => {
+    if (phase === "wait" && inBox(e)) picker.click();
+    else if (phase === "load") { fast = true; if (skip) skip(); }
+  });
+  box.addEventListener("mousemove", (e) => {
+    hot = phase === "wait" && inBox(e);
+    box.style.cursor = hot || phase === "load" ? "pointer" : "default";
+  });
+  box.addEventListener("mouseleave", () => { hot = false; });
+  addEventListener("keydown", onKey);
+  ["dragenter", "dragover"].forEach((ev) => box.addEventListener(ev, (e) => { e.preventDefault(); hot = phase === "wait"; }));
+  box.addEventListener("dragleave", () => { hot = false; });
+  box.addEventListener("drop", (e) => {
+    e.preventDefault();
+    hot = false;
+    if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
+  });
+
+  function finish(info) {
     if (finished) return;
     finished = true;
     box.remove();
-    removeEventListener("keydown", finish);
-    done();
+    removeEventListener("keydown", onKey);
+    done(info);
   }
-  box.addEventListener("click", finish);
-  addEventListener("keydown", finish);
 
   function newStripes(h) {
     stripes = [];
@@ -109,14 +200,12 @@ function intro(done) {
 
   function frame(now) {
     if (finished) return;
-    if (start === null) start = now;
-    const t = (now - start) / 1000;
     const W = (cv.width = innerWidth * DPR), H = (cv.height = innerHeight * DPR);
     // the 320x200 screen at an integer scale, with a border around it
     const s = Math.max(1, Math.floor(Math.min(W / 384, H / 272)));
     const sw = 320 * s, sh = 200 * s, sx = Math.floor((W - sw) / 2), sy = Math.floor((H - sh) / 2);
 
-    if (t >= T_LOAD && t < T_END - 0.3) {
+    if (loading) {
       if (!REDUCED || now - lastStripes > 500) { newStripes(H); lastStripes = now; }
       for (const [y, h, c] of stripes) { ctx.fillStyle = c; ctx.fillRect(0, y, W, h); }
     } else {
@@ -126,23 +215,44 @@ function intro(done) {
     ctx.fillStyle = C64.blue;
     ctx.fillRect(sx, sy, sw, sh);
 
-    const out = lines.slice();
-    if (t >= T_TYPE) out.push(typed.slice(0, Math.floor((t - T_TYPE) * 14)));
-    if (t >= T_SEARCH) out.push("", "SEARCHING FOR *");
-    if (t >= T_LOAD) out.push("LOADING");
-    if (t >= T_END - 0.3) out.push("READY.", "RUN");
-    out.forEach((l, i) => drawText(ctx, l, sx, sy + i * 8 * s, s, C64.lightblue));
-    if (Math.floor(t * 2.5) % 2 === 0) {   // blinking cursor after the last line
-      const last = out[out.length - 1];
-      const row = last === "" || t < T_TYPE ? out.length : out.length - 1;
-      const col = row === out.length ? 0 : last.length;
+    const out = scr.slice();
+    if (typing !== null) out.push(...(typing.match(/.{1,40}/g) || [""]));
+    // waiting: the cursor's row, then the drop box (the step 1 box of the page, on the 64)
+    const rows = out.slice(-(phase === "wait" ? ROWS - 1 - BOX_ROWS : ROWS));
+    rows.forEach((l, i) => drawText(ctx, l, sx, sy + i * 8 * s, s, C64.lightblue));
+    dropBox = null;
+    if (phase === "wait") {
+      const p = 8 * s, bx = sx, by = sy + (rows.length + 1) * p, bw = sw, bh = BOX_ROWS * p;
+      if (hot) { ctx.fillStyle = C64.lightblue; ctx.fillRect(bx, by, bw, bh); }
+      dashedRect(ctx, bx, by, bw, bh, s, C64.lightblue);
+      DROP.forEach((l, i) => drawText(ctx, l, bx + 2 * p, by + (i + 1) * p, s, hot ? C64.blue : C64.lightblue));
+      dropBox = [bx / DPR, by / DPR, bw / DPR, bh / DPR];
+    }
+    if (!loading && phase !== "dead" && Math.floor(now / 400) % 2 === 0) {   // blinking cursor
+      const typed = typing !== null;
+      const row = typed ? rows.length - 1 : Math.min(rows.length, ROWS - 1);
+      const col = typed ? rows[rows.length - 1].length : 0;
       ctx.fillStyle = C64.lightblue;
       ctx.fillRect(sx + col * 8 * s, sy + row * 8 * s, 8 * s, 8 * s);
     }
-    if (t >= T_END) return finish();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+  box.focus();
+}
+
+/* a dashed outline 2 pixels thick, dashes 4 on 4 (s: screen pixel size) */
+function dashedRect(ctx, x, y, w, h, s, color) {
+  const t = 2 * s, d = 4 * s;
+  ctx.fillStyle = color;
+  for (let i = 0; i < w; i += 2 * d) {
+    ctx.fillRect(x + i, y, Math.min(d, w - i), t);
+    ctx.fillRect(x + i, y + h - t, Math.min(d, w - i), t);
+  }
+  for (let i = 0; i < h; i += 2 * d) {
+    ctx.fillRect(x, y + i, t, Math.min(d, h - i));
+    ctx.fillRect(x + w - t, y + i, t, Math.min(d, h - i));
+  }
 }
 
 /* ---- banner: copper bars and a sine ("snake") scroller ---- */
@@ -489,37 +599,22 @@ function updatePatch() {
   pixAll();
 }
 
-async function loadFile(file) {
+/* the image the start screen loaded: what it is, and measure it */
+function showInfo(info) {
   const fw = $("fw");
-  state.info = null;
-  state.image = null;
-  state.chosen.clear();
-  state.voices = [];
-  state.memory = null;
-  $("dl").hidden = true;
-  $("howto").hidden = true;
-  $("log").textContent = "";
-  say(fw, "dim", `READING ${file.name.toUpperCase()}...`);
-  updatePatch();
-  try {
-    const info = await api("/api/inspect", { method: "POST", body: file });
-    state.info = info;
-    state.image = info.image;
-    const id = `PERKONS ${info.version} (${info.git.toUpperCase()})`;
-    if (!info.official) {
-      say(fw, "err", `${id}: NOT AN OFFICIAL IMAGE WE KNOW (ALREADY MODDED?). LOAD THE ONE FROM ERICA SYNTHS.`);
-    } else if (!info.supported) {
-      say(fw, "err", `${id}: OFFICIAL, BUT NOT SUPPORTED YET. MODS NEED ${state.status.supported.join(" OR ")}.`);
-    } else if (!state.status.gcc) {
-      say(fw, "err", `${id}: OK, BUT ARM-NONE-EABI-GCC WAS NOT FOUND. INSTALL IT TO BUILD (SEE README).`);
-    } else {
-      say(fw, "ok", `FOUND ${id}. OFFICIAL IMAGE, CRC OK. READY TO MOD!`);
-    }
-    if (info.official && info.supported) measure(info.image);
-  } catch (e) {
-    say(fw, "err", `?FILE ERROR: ${e.message.toUpperCase()}`);
+  state.info = info;
+  state.image = info.image;
+  const id = `PERKONS ${info.version} (${info.git.toUpperCase()})`;
+  if (!info.official) {
+    say(fw, "err", `${id}: NOT AN OFFICIAL IMAGE WE KNOW (ALREADY MODDED?). LOAD THE ONE FROM ERICA SYNTHS.`);
+  } else if (!info.supported) {
+    say(fw, "err", `${id}: OFFICIAL, BUT NOT SUPPORTED YET. MODS NEED ${state.status.supported.join(" OR ")}.`);
+  } else if (!state.status.gcc) {
+    say(fw, "err", `${id}: OK, BUT ARM-NONE-EABI-GCC WAS NOT FOUND. INSTALL IT TO BUILD (SEE README).`);
+  } else {
+    say(fw, "ok", `FOUND ${id}. OFFICIAL IMAGE, CRC OK. READY TO MOD!`);
   }
-  updatePatch();
+  if (info.official && info.supported) measure(info.image);
 }
 
 function logLines(lines) {
@@ -576,7 +671,8 @@ async function build() {
   updatePatch();
 }
 
-async function main() {
+/* info: the image the intro loaded, if any */
+async function main(info) {
   $("app").hidden = false;
   pixAll();
   scroller();
@@ -586,19 +682,17 @@ async function main() {
   } catch (e) {
     say($("fw"), "err", `?CAN'T REACH THE MOD MATRIX SERVER: ${e.message.toUpperCase()}`);
   }
+  if (state.status && state.status.stale) {
+    say($("fw"), "err", "?THE MOD MATRIX WAS UPDATED SINCE IT STARTED. STOP IT (CTRL-C) AND START IT AGAIN.");
+  }
   renderMods();
+  if (info && state.status) showInfo(info);
   updatePatch();
 
-  const input = $("file"), drop = $("drop");
-  input.addEventListener("change", () => input.files[0] && loadFile(input.files[0]));
-  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
-  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); pixAll(); }));
-  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); pixAll(); }));
-  drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
   $("patch").addEventListener("click", build);
   for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
   // hover/focus colours change the text colour, which the canvases have to redraw for
-  for (const el of document.querySelectorAll(".drop, .patch, .dl, .tab")) {
+  for (const el of document.querySelectorAll(".patch, .dl, .tab")) {
     for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
       el.addEventListener(ev, () => requestAnimationFrame(() => el.querySelectorAll(".pix").forEach(pixRender)));
     }
@@ -609,7 +703,8 @@ async function main() {
 }
 
 (async () => {
-  let skip = new URLSearchParams(location.search).has("nointro");
-  try { skip = skip || (await (await fetch("/api/status")).json()).intro === false; } catch (e) { /* offline */ }
-  if (skip) { $("intro").remove(); main(); } else intro(main);
+  let status = null;
+  try { status = await (await fetch("/api/status")).json(); } catch (e) { /* offline: main says so */ }
+  const quick = new URLSearchParams(location.search).has("nointro") || (status && status.intro === false);
+  intro(status, main, quick);
 })();

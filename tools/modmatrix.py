@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pērkons Mod Matrix: a local web app that builds modded firmware from an official image.
 
-  modmatrix.py [--port 6464] [--no-browser] [--no-intro]
+  modmatrix.py [--port 6464] [--no-browser] [--no-intro]   (no-intro: no start-screen animation)
 
 Serves ui/modmatrix/ on 127.0.0.1 only (nothing leaves the machine) and opens it in the
 browser. The user supplies their own official .img; the app reads only its header
@@ -10,7 +10,8 @@ browser. The user supplies their own official .img; the app reads only its heade
 emulator regression on the voices, and hands back perkons_v<version>-0-force.img.
 
 API (JSON unless noted):
-  GET  /api/status             toolchain check, supported versions
+  GET  /api/status             toolchain check, supported versions, stale (the code or mods
+                               changed on disk since this server started: restart it)
   GET  /api/mods               options
   POST /api/inspect            body: the .img bytes -> {image id, version, official, ...}
   GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
@@ -23,6 +24,7 @@ API (JSON unless noted):
 """
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -42,13 +44,15 @@ sys.path.insert(0, ROOT)
 from build import apply_specs, build_image, m7_code, regression  # noqa: E402
 from perkons import catalog, cbuild, ram, srchash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
+from perkons.mods import mod_dirs  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
 MAX_IMAGE = 16 * 1024 * 1024
 
 
 class LineLog(io.TextIOBase):
-    """stdout replacement: collects complete lines into a job's log."""
+    """stdout replacement: complete lines go into a job's log; the line being written (e.g.
+    the renders' progress dots) is the job's partial line."""
 
     def __init__(self, job):
         self.job, self.buf = job, ''
@@ -79,6 +83,21 @@ class Job:
                     'name': self.name}
 
 
+def code_stamp():
+    """What the running server's code and catalog were loaded from: every framework, UI and
+    mod file's name, size and time. A server whose stamp no longer matches the disk is
+    stale (its Python is older than the page and mods it would serve)."""
+    files = [os.path.join(ROOT, 'tools', f) for f in os.listdir(os.path.join(ROOT, 'tools')) if f.endswith('.py')]
+    for top in [os.path.join(ROOT, d) for d in srchash.FRAMEWORK] + [UI_DIR] + mod_dirs():
+        files += list(srchash._files(top)) + [os.path.join(top, f) for f in os.listdir(top)
+                                              if f.endswith(('.js', '.css', '.html'))]
+    h = hashlib.sha256()
+    for f in sorted(set(files)):
+        st = os.stat(f)
+        h.update(f'{f}\0{st.st_size}\0{st.st_mtime_ns}\0'.encode())
+    return h.hexdigest()
+
+
 class App:
     def __init__(self, intro=True):
         self.images = {}                     # image id -> (Image, raw bytes, info)
@@ -87,6 +106,7 @@ class App:
         self.build_lock = threading.Lock()   # one build at a time (build output goes via stdout)
         self.work = tempfile.mkdtemp(prefix='modmatrix-')
         self.intro = intro
+        self.code = code_stamp()
 
     def status(self):
         try:
@@ -94,7 +114,8 @@ class App:
             gcc = True
         except cbuild.BuildError:
             gcc = False
-        return {'gcc': gcc, 'supported': catalog.supported_versions(), 'intro': self.intro}
+        return {'gcc': gcc, 'supported': catalog.supported_versions(), 'intro': self.intro,
+                'stale': code_stamp() != self.code}
 
     def inspect(self, raw):
         img, info = catalog.inspect(raw)

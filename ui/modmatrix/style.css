@@ -13,6 +13,7 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 /* intro: loader screen, fills the window */
 #intro { position: fixed; inset: 0; z-index: 10; background: var(--lightblue); cursor: pointer; }
 #intro canvas { width: 100%; height: 100%; }
+#intro:focus { outline: none; }
 
 /* banner */
 #banner { background: var(--black); }
@@ -62,6 +63,7 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 .pix { margin: 0; color: var(--lightblue); }
 .pix canvas { max-width: 100%; }
 .title { color: var(--white); margin-bottom: 8px; }
+#fw { margin-top: 24px; }
 .dim { color: var(--lightgrey); }
 .head { color: var(--white); margin-bottom: 12px; }
 .warn { color: var(--lightred); margin-bottom: 8px; }
@@ -72,12 +74,6 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 .step.locked .pix, .step.locked .pix.head { color: var(--grey); }
 .step.locked { pointer-events: none; }
 
-.drop {
-  display: block; padding: 24px 16px; margin-bottom: 12px; cursor: pointer;
-  border: 4px dashed var(--lightblue); background: var(--blue);
-}
-.drop:hover, .drop:focus-visible, .drop.over { background: var(--lightblue); outline: none; }
-.drop:hover .pix, .drop:focus-visible .pix, .drop.over .pix { color: var(--blue); }
 
 /* step 2: MODS / ENGINES tabs */
 #tabs { display: flex; gap: 12px; margin-bottom: 20px; }
@@ -119,7 +115,7 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 }
 .patch .pix { color: var(--blue); }
 .patch:hover:not(:disabled), .patch:focus-visible { background: var(--white); border-color: var(--white); outline: none; }
-/* inactive: a dashed outline, like the firmware drop area */
+/* inactive: a dashed outline, like the start screen's drop box */
 .patch:disabled { background: var(--blue); border-style: dashed; cursor: not-allowed; }
 .patch:disabled .pix { color: var(--lightblue); }
 .patch.busy, .patch.busy:disabled { background: var(--yellow); border: 4px solid var(--yellow); }

@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="intro" role="presentation" aria-hidden="true"><canvas id="intro-canvas"></canvas></div>
+<div id="intro" role="button" tabindex="0" aria-label="Perkons Mod Matrix. Drop your official Perkons firmware (.img) here, or press Enter to choose it."><canvas id="intro-canvas" aria-hidden="true"></canvas></div>
 
 <div id="app" hidden>
   <header id="banner"><canvas id="scroller" aria-hidden="true"></canvas>
@@ -17,18 +17,10 @@
   <main id="screen">
     <p class="pix title" data-align="center">**** PERKONS MOD MATRIX V1 ****</p>
     <p class="pix dim" data-align="center">BUILD MODDED FIRMWARE FROM YOUR OWN OFFICIAL IMAGE</p>
-
-    <section id="s1" class="step">
-      <h2 class="pix head">1. LOAD FIRMWARE</h2>
-      <label id="drop" class="drop" tabindex="0">
-        <input id="file" type="file" accept=".img" class="sr">
-        <span class="pix">DROP YOUR OFFICIAL PERKONS .IMG HERE OR CLICK TO BROWSE</span>
-      </label>
-      <p id="fw" class="pix dim" aria-live="polite">NO FIRMWARE LOADED.</p>
-    </section>
+    <p id="fw" class="pix dim" aria-live="polite">NO FIRMWARE LOADED.</p>
 
     <section id="s2" class="step locked" aria-disabled="true">
-      <h2 class="pix head">2. CHOOSE YOUR MODS AND ENGINES</h2>
+      <h2 class="pix head">CHOOSE YOUR MODS AND ENGINES</h2>
       <div id="tabs" role="tablist">
         <button class="tab" role="tab" data-tab="mods" aria-selected="true"><span class="pix" data-nowrap="1">MODS</span></button>
         <button class="tab" role="tab" data-tab="voices" aria-selected="false"><span class="pix" data-nowrap="1">ENGINES</span></button>
