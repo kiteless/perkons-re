@@ -22,3 +22,6 @@ __pycache__/
 
 # build and measurement caches (tools/perkons/srchash.py)
 .cache/
+
+# notes for Claude Code: kept in the private perkons-re-docs (claude/), linked here
+CLAUDE.md
