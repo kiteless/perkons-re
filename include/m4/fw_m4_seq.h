@@ -136,6 +136,7 @@ static inline int fw_pattern_of(const void *hdr)
 
 /* ---- calls ------------------------------------------------------------------------- */
 #define fw_key_held         FW_CALL(SYM_key_held, int (*)(int key))
+#define fw_get_tick         FW_CALL(SYM_hal_get_tick, uint32_t (*)(void))   /* ms since boot */
 #define fw_steps_held       FW_CALL(SYM_steps_held, int (*)(void))
 #define fw_set_mode         FW_CALL(SYM_set_mode, void (*)(int mode))
 #define fw_get_mode         FW_CALL(SYM_get_mode, int (*)(void))
