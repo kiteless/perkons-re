@@ -123,8 +123,12 @@ class Host(BaseHost):
         blob = self.link('pk7_host', srcs, 'pk7_boot', self.gen_source(), chains, nxt, {},
                          'pk7_host_magic', PK7_HOST_MAGIC, ram=bss)
         assert p.append('m7', blob, f'M7 host + mods ({len(blob)} B)', align=16) == origin
-        used = sum(size for size in cbuild.ram_sections(os.path.join(p.build_dir, 'm7host')).values())
-        p.ram_use('voice', 'm7host', (used + 3) & ~3, bss[0])
+        placed = sorted((addr, size, src, section) for (src, section), (addr, size)
+                        in cbuild.ram_placed(os.path.join(p.build_dir, 'm7host')).items())
+        for (addr, size, src, section), following in zip(placed, placed[1:] + [None]):
+            # up to the next variable, so padding counts and the ranges can't overlap
+            taken = following[0] - addr if following else (size + 3) & ~3
+            p.ram_use('voice', f'{os.path.relpath(src, ROOT)}:{section}', taken, addr)
         s = self.syms
         p.redirect_call('m7', 'main.call_wire_voices', s['pk7_boot'], 'main: wire_voices, then the M7 mods')
         p.redirect_call('m7', 'main.cfg_unknown_recv', s['pk7_cfg_recv'],

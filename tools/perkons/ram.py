@@ -4,7 +4,7 @@
   voice   M7 DTCM between the newlib heap cap and a stack reserve (M7 mods only)
   store   AXI SRAM gap: the M4 host's PK_AXI variables (settings, bulk data)
 
-Patches record what they take with Patcher.ram_use(area, owner, size, addr); the M4 host
+Patches record what they take with Patcher.ram_use(area, owner, size, addr); each core's host
 records each RAM section it links (by source), a mod with fixed M7 addresses its range. Owners
 are names, so two options that share one (the FX buffer) count it once when combined.
 Patcher.finish() refuses a build that doesn't fit (check()).
