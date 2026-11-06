@@ -412,7 +412,8 @@ class M4Emu(CoreEmu):
     """The M4 (UI/SD) core, for running patch code and the firmware functions it calls.
 
     `sd` is a virtual SD card: {path: bytes}. FatFs f_open/f_read/f_write/f_close/f_stat
-    are replaced by Python, so firmware code that reads or writes files (e.g. the JSON
+    (and f_lseek and the directory calls, where the symbols name them) are replaced by
+    Python, keeping the FIL's size (+0x0c) and position (+0x18) as FatFs does, so firmware code that reads or writes files (e.g. the JSON
     loader and saver) runs for real against it. Paths are matched case-insensitively, like
     FAT. Files written show up in `sd_written` (and in `sd`, for later reads)."""
 
@@ -433,7 +434,7 @@ class M4Emu(CoreEmu):
             self.stub(f['f_write'], self._f_write)
         self.stub(f['f_close'], self._f_close)
         self.stub(f['f_stat'], self._f_stat)
-        for name, fn in (('f_unlink', self._f_unlink), ('f_opendir', self._f_opendir),
+        for name, fn in (('f_unlink', self._f_unlink), ('f_lseek', self._f_lseek), ('f_opendir', self._f_opendir),
                          ('f_readdir', self._f_readdir), ('f_closedir', self._f_closedir)):
             if name in f:
                 self.stub(f[name], fn)
@@ -446,7 +447,23 @@ class M4Emu(CoreEmu):
             path = path[2:]
         return path.lstrip('/').lower()
 
-    FR_OK, FR_NO_FILE, FR_DENIED = 0, 4, 7
+    FR_OK, FR_DISK_ERR, FR_NO_FILE, FR_DENIED = 0, 1, 4, 7
+    FIL_SIZE, FIL_POS = 0x0c, 0x18                     # FatFs FIL: obj.objsize, fptr
+    DMA_RAM = (0x24000000, 0x24080000)                 # what the card's DMA (SDMMC1) reaches: AXI SRAM
+
+    def _dma_ok(self, op, buf, n):
+        """FatFs moves a whole sector or more straight between the card and the caller's
+        buffer, by the card controller's DMA, which only reaches AXI SRAM: elsewhere it fails."""
+        if n < 512 or self.DMA_RAM[0] <= buf and buf + n <= self.DMA_RAM[1]:
+            return True
+        self.sd_log.append(('dma', op, buf, n))
+        return False
+
+    def _fil(self, fp):
+        """Mirror an open file's size and position into its FIL, as FatFs keeps them."""
+        data, pos = self._open[fp][:2]
+        self.w32(fp + self.FIL_SIZE, len(data))
+        self.w32(fp + self.FIL_POS, pos)
 
     def _f_open(self, emu, fp, path_ptr, mode, _):
         path = self.cstr(path_ptr)
@@ -459,17 +476,32 @@ class M4Emu(CoreEmu):
         if data is None:
             return self.FR_NO_FILE
         self._open[fp] = [data, 0]
+        self._fil(fp)
         return self.FR_OK
 
     def _f_read(self, emu, fp, buf, btr, br_ptr):
+        if not self._dma_ok('read', buf, btr):
+            self.w32(br_ptr, 0)
+            return self.FR_DISK_ERR
         data, pos = self._open[fp]
         chunk = data[pos:pos + btr]
         self.uc.mem_write(buf, chunk)
         self._open[fp][1] = pos + len(chunk)
+        self._fil(fp)
         self.w32(br_ptr, len(chunk))
         return self.FR_OK
 
+    def _f_lseek(self, emu, fp, ofs, *_):
+        f = self._open[fp]
+        f[1] = min(ofs, len(f[0]))                     # a read-only file doesn't grow
+        self._fil(fp)
+        return self.FR_OK
+
     def _f_write(self, emu, fp, buf, btw, bw_ptr):
+        if not self._dma_ok('write', buf, btw):
+            if bw_ptr:
+                self.w32(bw_ptr, 0)
+            return self.FR_DISK_ERR
         f = self._open[fp]
         f[0] += bytes(self.uc.mem_read(buf, btw))
         if bw_ptr:

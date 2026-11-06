@@ -145,6 +145,8 @@ static inline int fw_pattern_of(const void *hdr)
 #define fw_midi_out         FW_CALL(SYM_midi_out_bytes, void (*)(int port, uint32_t packed))
 #define fw_f_read           FW_CALL(SYM_f_read, int (*)(void *fil, void *buf, unsigned n, unsigned *got))
 #define fw_f_unlink         FW_CALL(SYM_f_unlink, int (*)(const char *path))
+#define fw_f_lseek          FW_CALL(SYM_f_lseek, int (*)(void *fil, uint32_t ofs))   /* fast seek compiled in (FIL +0x2c) */
+#define FW_FIL_SIZE         0x0c    /* FIL: u32 file size */
 #define fw_f_opendir        FW_CALL(SYM_f_opendir, int (*)(void *dir, const char *path))
 #define fw_f_readdir        FW_CALL(SYM_f_readdir, int (*)(void *dir, void *fno))   /* fname "" at the end */
 #define fw_f_closedir       FW_CALL(SYM_f_closedir, int (*)(void *dir))
