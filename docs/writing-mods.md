@@ -163,11 +163,40 @@ In C, use ordinary globals: both RAM areas are zeroed at boot. Where they go:
 | **MAIN** | plain globals (`.bss`) | 64 KB + 256 B, half of it the shared 32 KB FX buffer; fast | what the audio path touches per sample: buffers, positions, filter states |
 | **STORE** | `PK_AXI uint8_t pk_cfg_my_mod;` | ~111 KB; a few cycles slower per access | settings, control-rate state, bulk data |
 
-The Mod Matrix shows these (and the M7's **VOICE**, below) as memory meters:
-the M4 host records every RAM variable it links, a combination that doesn't fit can't be
-ticked, and the build refuses it (`tools/perkons/ram.py`). VOICE is the M7's (the M4
-can't reach it); never share `PK_AXI` data with the M7 (its cache may not see M4
-writes): send it a config message. FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
+The Mod Matrix shows these (and the M7's **VOICE**, below) as memory meters, each the
+whole physical block with the firmware's own parts drawn in (`ram.blocks`). It measures
+every option by building it (with what it requires), so a combination that doesn't fit
+can't be ticked, and the build refuses it (`tools/perkons/ram.py`). VOICE is the M7's (the
+M4 can't reach it). The M7 reads M4 RAM and STORE as they are (its data cache is off), but
+for settings send it a config message; share memory both ways only for bulk data, at a
+fixed range you record.
+
+#### Memory: what's counted for you, what you must record
+
+The meters are only as right as what the build knows, so every byte of RAM a mod uses must
+be either linked or recorded:
+
+| your mod uses | counted | you do |
+|---|---|---|
+| C globals and statics, either core (`.bss`, `PK_AXI`) | automatically: each host records every RAM section it links, by source | nothing |
+| a fixed address range of its own (a buffer at a `#define`d address, shared by both cores) | **no** | `p.ram_use(area, owner, size, addr)` |
+| one of the firmware's own reserved ranges (`ram.STOCK`), taken over for good | **no** | `p.ram_takeover(area, stock range, owner)` |
+| a firmware buffer for a moment, while the firmware isn't using it (`ram.BORROWABLE`: the JSON buffer) | nothing to count: the firmware reserves it | `p.ram_borrow(area, buffer, owner)` |
+
+Record a range under one owner name; two options that use the same owner (a shared
+buffer) count it once. Every recorded range, linked ones included, must sit in its area
+and not overlap any other, or the build is refused.
+
+**The emulator enforces this.** Each build leaves a map of what it recorded, and both
+emulated cores load it (`emu.CoreEmu`): in every test, a write into a mods' area outside
+what the build recorded, or a write by mod code into the firmware's reserved STORE ranges
+(`ram.GUARDED`: the file system and JSON buffer, the default custom samples) outside its
+takeovers and borrows, raises `RamViolation` with the address and the code that wrote
+it. Writing the firmware's working state (voice objects, patterns, LEDs) is fine. A
+borrow can't be fully checked: when the firmware fills the buffer on a mod's behalf (a
+card read into the JSON buffer), it's the firmware writing, so record every borrow.
+
+FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 32 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
 

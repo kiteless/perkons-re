@@ -418,12 +418,26 @@ function kb(n) {
   return (k < 10 ? (Math.floor(k * 10) / 10).toFixed(1) : String(Math.floor(k))) + "K";
 }
 
-/* a meter is a column of ring characters, filled from the bottom (white: what the mod under
-   the pointer would add) */
+/* the stock ranges taken over by these options: {area: Set of range names} */
+function ramTaken(ids) {
+  const out = {};
+  for (const id of ids) {
+    for (const [a, t] of Object.entries((state.memory.takeovers || {})[id] || {})) {
+      for (const name of Object.keys(t)) (out[a] = out[a] || new Set()).add(name);
+    }
+  }
+  return out;
+}
+
+/* a meter is a column of ring characters: the whole physical RAM block, its lowest address
+   at the bottom. Grey: the firmware's own ranges; green: the mods' part as far as these
+   options use it, and stock ranges a mod has taken over; white: what the option under the
+   pointer would add; dark: free for mods. Red / yellow green when the mods' part is (nearly)
+   full. */
 const RING = [60, 126, 231, 195, 231, 126, 60, 0];
 const RING_S = 3, CELL = 8 * RING_S;
 
-function drawMeter(cv, frac, extra) {
+function drawMeter(cv, area, used, extra, taken, ghostTaken) {
   const W = cv.clientWidth, H = cv.clientHeight;
   cv.width = W * DPR;
   cv.height = H * DPR;
@@ -431,12 +445,22 @@ function drawMeter(cv, frac, extra) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const n = Math.max(1, Math.floor(H / CELL)), x = Math.floor((W - CELL) / 2);
-  const lit = Math.ceil(Math.min(1, frac) * n - 1e-9);
-  const ghost = Math.ceil(Math.min(1, frac + extra) * n - 1e-9);
+  const block = area && area.block;
+  const full = area ? used / area.size : 0;
+  const lit = full >= 0.85 ? C64.lightred : full >= 0.6 ? C64.yellow : C64.lightgreen;
   for (let i = 0; i < n; i++) {
-    const f = i / n;
-    ctx.fillStyle = i < lit ? (f >= 0.85 ? C64.lightred : f >= 0.6 ? C64.yellow : C64.lightgreen)
-      : i < ghost ? C64.white : C64.darkgrey;
+    let color = C64.darkgrey;
+    if (block) {
+      const mid = block.start + (i + 0.5) / n * block.size;        // the address this ring stands for
+      const r = block.ranges.find((g) => mid >= g.start && mid < g.start + g.size) || block.ranges[0];
+      if (r.owner === "mods") {
+        const at = mid - r.start;
+        color = at < used ? lit : at < used + extra ? C64.white : C64.darkgrey;
+      } else {
+        color = taken.has(r.owner) ? C64.lightgreen : ghostTaken.has(r.owner) ? C64.white : C64.grey;
+      }
+    }
+    ctx.fillStyle = color;
     const y = H - (i + 1) * CELL;
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
@@ -456,15 +480,19 @@ function renderMem() {
     if (!done) {
       setPix(cap, "-");
       setPix(free, "-");
-      drawMeter(col.querySelector(".meter"), 0, 0);
+      drawMeter(col.querySelector(".meter"), null, 0, 0, new Set(), new Set());
       continue;
     }
     const size = m.areas[a].size, left = size - used[a];
-    setPix(cap, kb(size));
+    setPix(cap, kb(m.areas[a].block.size));
     free.className = "pix free" + (left < 0 ? " out" : left < size * 0.15 ? " low" : "");
     setPix(free, left < 0 ? "0K" : kb(left));
-    drawMeter(col.querySelector(".meter"), used[a] / size, hov ? Math.max(0, hov[a] - used[a]) / size : 0);
+    const taken = (ramTaken(ids)[a]) || new Set();
+    const ghost = hov ? (ramTaken(withRequires([...ids, state.hover]))[a] || new Set()) : new Set();
+    drawMeter(col.querySelector(".meter"), m.areas[a], used[a], hov ? Math.max(0, hov[a] - used[a]) : 0,
+      taken, new Set([...ghost].filter((g) => !taken.has(g))));
   }
+  $("memkey").hidden = !done;
   const note = $("memnote");
   note.hidden = done;
   note.className = "pix " + (m && m.state === "error" ? "err" : "dim");

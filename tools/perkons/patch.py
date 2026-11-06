@@ -44,6 +44,8 @@ class Patcher:
         # mod offering extra engines to another mod), without importing each other
         self.shared = {}
         self.ram = {}      # {area: {owner: (addr or None, size)}}, see ram.py
+        self.ram_takeovers = {}   # {area: {stock range name: owner}}, see ram_takeover
+        self.ram_borrows = {}     # {area: {firmware buffer name: [owners]}}, see ram_borrow
 
     # -- primitives ------------------------------------------------------------------
     def _seg(self, name):
@@ -150,6 +152,30 @@ class Patcher:
             raise PatchError(f'{owner}: unknown RAM area {area!r}')
         self.ram.setdefault(area, {})[owner] = (addr, size)
 
+    def ram_takeover(self, area, stock, owner):
+        """Record that this build takes over one of the firmware's own RAM ranges in `area`
+        (ram.STOCK: e.g. STEP SAMPLER takes the 'default custom samples'): it shows as
+        `owner`'s, and the mods' part of the area is unchanged."""
+        from . import ram
+        if stock not in ram.STOCK.get(area, ()):
+            raise PatchError(f'{owner}: no stock range {stock!r} in {area!r} (ram.STOCK)')
+        taken = self.ram_takeovers.setdefault(area, {})
+        if taken.get(stock, owner) != owner:
+            raise PatchError(f'{owner}: {area} {stock!r} is already taken over by {taken[stock]}')
+        taken[stock] = owner
+
+    def ram_borrow(self, area, buffer, owner):
+        """Record that this build uses one of the firmware's own buffers for a moment, while
+        the firmware isn't (ram.BORROWABLE; STEP SAMPLER bounces card reads through the
+        JSON buffer): it costs nothing more, but is listed, and the emulator lets the mod's
+        code write it. Several mods may borrow the same buffer."""
+        from . import ram
+        if buffer not in ram.BORROWABLE.get(area, ()):
+            raise PatchError(f'{owner}: no borrowable buffer {buffer!r} in {area!r} (ram.BORROWABLE)')
+        owners = self.ram_borrows.setdefault(area, {}).setdefault(buffer, [])
+        if owner not in owners:
+            owners.append(owner)
+
     def finish(self):
         while self._finishers:
             self._finishers.pop(0)()
@@ -167,6 +193,8 @@ class Patcher:
         for s in self.img.segments:
             out.segments.append(type(s)(core=s.core, addr=s.addr, data=bytes(self._data[s.name])))
         out.build()  # computes CRCs
+        from . import ram
+        ram.save_map(self, out)     # for the emulator's RAM watch
         return out
 
     def report(self):

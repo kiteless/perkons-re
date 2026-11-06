@@ -15,8 +15,12 @@ API (JSON unless noted):
   GET  /api/mods               options
   POST /api/inspect            body: the .img bytes -> {image id, version, official, ...}
   GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
-                               {state: measuring|done, areas: {main|voice|store: {size}},
-                                options: {id: {area: {owner: bytes}}}, errors: {id: text}}
+                               {state: measuring|done, areas: {main|voice|store: {start, size: the
+                                mods' part, block: {name, start, size, ranges: [{owner, start,
+                                size}]}: the physical block, stock's ranges and 'mods'}},
+                                options: {id: {area: {owner: bytes}}},
+                                takeovers: {id: {area: {stock range: owner}}},
+                                borrows: {id: {area: {firmware buffer: [owners]}}}, errors: {id: text}}
   POST /api/build              {image, options: [mod ids], voices: [voice ids, slot order],
                                checks: bool} -> {job}
   GET  /api/job/<id>           {state: running|done|failed, log: [...], partial: the line being
@@ -48,6 +52,7 @@ from perkons.emu import Symbols  # noqa: E402
 from perkons.mods import mod_dirs  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
+MEMORY_FORMAT = 3          # the shape of a measurement (/api/memory): part of its cache key
 MAX_IMAGE = 16 * 1024 * 1024
 
 
@@ -134,15 +139,21 @@ class App:
         RAM it takes, for the MAIN / VOICE / STORE meters. Kept in .cache/memory/ by a hash
         of the image and every build input, so a restart with nothing changed is instant."""
         img, _, info = self.images[image_id]
-        cache = srchash.path('memory', srchash.key(info['sha256']), '.json')
+        cache = srchash.path('memory', srchash.key(info['sha256'], MEMORY_FORMAT), '.json')
         if os.path.exists(cache):
             with open(cache) as f:
                 self.memory[image_id] = json.load(f)
             return
         symbols = os.path.join(ROOT, 'symbols', f'v{info["version"]}-m7.json')
         syms = {'m7': Symbols(symbols), 'm4': Symbols(symbols.replace('-m7.json', '-m4.json'))}
-        areas = {a: {'start': lo, 'size': hi - lo} for a, (lo, hi) in ram.areas(syms).items()}
-        opts, errors = {}, {}
+        blocks = ram.blocks(syms)
+        areas = {a: {'start': lo, 'size': hi - lo,
+                     'block': {'name': blocks[a]['name'], 'start': blocks[a]['start'],
+                               'size': blocks[a]['end'] - blocks[a]['start'],
+                               'ranges': [{'owner': o, 'start': s, 'size': e - s}
+                                          for o, s, e in blocks[a]['ranges']]}}
+                 for a, (lo, hi) in ram.areas(syms).items()}
+        opts, takeovers, borrows, errors = {}, {}, {}, {}
         with self.build_lock:
             by_id = {o['id']: o for o in catalog.options()}
             for o in by_id.values():
@@ -154,9 +165,15 @@ class App:
                     with contextlib.redirect_stdout(io.StringIO()):
                         p = apply_specs(img, specs, symbols, os.path.join(self.work, 'measure', o['id']))
                     opts[o['id']] = {a: {k: size for k, (_, size) in own.items()} for a, own in p.ram.items()}
+                    if p.ram_takeovers:
+                        takeovers[o['id']] = p.ram_takeovers
+                    if p.ram_borrows:
+                        borrows[o['id']] = p.ram_borrows
                 except BaseException as e:   # also sys.exit from a target mismatch
                     errors[o['id']] = str(e)
-        self.memory[image_id] = m = {'state': 'done', 'areas': areas, 'options': opts, 'errors': errors}
+        self.memory[image_id] = m = {'state': 'done', 'areas': areas, 'options': opts, 'takeovers': takeovers,
+                                     'borrows': borrows,
+                                     'errors': errors}
         if not errors:
             with open(cache, 'w') as f:
                 json.dump(m, f)

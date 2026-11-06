@@ -106,6 +106,35 @@ class Symbols:
         return s
 
 
+class RamViolation(RuntimeError):
+    """A write to RAM the build didn't record (CoreEmu's RAM watch)."""
+
+
+def _gaps(lo, hi, ranges):
+    """The parts of [lo, hi) outside the (merged, sorted) ranges."""
+    out, at = [], lo
+    for r_lo, r_hi, _ in ranges:
+        if r_hi <= at or r_lo >= hi:
+            continue
+        if r_lo > at:
+            out.append((at, r_lo))
+        at = max(at, r_hi)
+    if at < hi:
+        out.append((at, hi))
+    return out
+
+
+def _merged(ranges):
+    """[[lo, hi, owner]] -> [(lo, hi, owners)], touching or overlapping ranges joined."""
+    out = []
+    for lo, hi, owner in sorted(ranges):
+        if out and lo <= out[-1][1]:
+            out[-1] = (out[-1][0], max(hi, out[-1][1]), out[-1][2] + ', ' + owner)
+        else:
+            out.append((lo, hi, owner))
+    return out
+
+
 class CoreEmu:
     """One STM32H7 core: memory map, its flash segment, call/memory helpers, peripheral stubs.
     `other_bin` is the other core's segment, loaded so cross-core flash reads resolve."""
@@ -113,7 +142,7 @@ class CoreEmu:
     OTHER_BASE = 0x08100000  # where `other_bin` is loaded (the M4 segment, for the M7)
 
     def __init__(self, seg_bin: bytes, symbols: Symbols, other_bin: bytes = None, trace_periph=False,
-                 freeze_rand=False):
+                 freeze_rand=False, ram_watch=True):
         self.sym = symbols
         self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         for _, base, size in REGIONS:
@@ -138,6 +167,46 @@ class CoreEmu:
             # between differently patched builds (noise becomes a constant; all code paths still run).
             a = symbols.fn['rand']
             self.uc.hook_add(UC_HOOK_CODE, self._fake_rand, begin=a, end=a)
+        if ram_watch:
+            from . import ram
+            self._watch_ram(ram.load_map(seg_bin))
+
+    # -- the RAM watch: what a build's patches recorded is all they may write ------------
+    def _watch_ram(self, m):
+        """With the build's RAM map (ram.ram_map; none for stock or hand-patched images):
+        a write into a mods' area outside every recorded range, or by mod code into a
+        guarded firmware range outside its takeovers and borrows, raises RamViolation."""
+        self.ram_map = m
+        if not m:
+            return
+        self._ram_used = _merged(m['used'])     # a write may span neighbouring variables
+        self._ram_allowed = _merged(m['allowed'])
+        self._ram_caves = [tuple(r) for r in m['caves']]
+        # hooks on the gaps only, so writes to recorded RAM cost nothing (the hook's range
+        # catches a write that starts in a gap; one that starts inside and runs out is
+        # caught by the check, from the gap's start back to the last recorded byte)
+        for lo, hi in m['areas'].values():
+            for g_lo, g_hi in _gaps(lo, hi, self._ram_used):
+                self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_area_write, begin=max(lo, g_lo - 3), end=g_hi - 1)
+        for lo, hi, name in m['guarded']:
+            for g_lo, g_hi in _gaps(lo, hi, self._ram_allowed):
+                self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_guarded_write, user_data=name,
+                                 begin=max(lo, g_lo - 3), end=g_hi - 1)
+
+    def _ram_violation(self, uc, addr, size, what):
+        pc, sp, lr = (uc.reg_read(r) for r in (A.UC_ARM_REG_PC, A.UC_ARM_REG_SP, A.UC_ARM_REG_LR))
+        raise RamViolation(f'{size}-byte write to {addr:08x} at pc={pc:08x} (sp={sp:08x} lr={lr:08x}): {what} '
+                           f'(record RAM with p.ram_use / ram_takeover / ram_borrow: docs/writing-mods.md)')
+
+    def _on_area_write(self, uc, access, addr, size, value, _):
+        if not any(lo <= addr and addr + size <= hi for lo, hi, _ in self._ram_used):
+            self._ram_violation(uc, addr, size, 'not in any RAM the build recorded')
+
+    def _on_guarded_write(self, uc, access, addr, size, value, name):
+        pc = uc.reg_read(A.UC_ARM_REG_PC)
+        if any(lo <= pc < hi for lo, hi in self._ram_caves) and \
+                not any(lo <= addr and addr + size <= hi for lo, hi, _ in self._ram_allowed):
+            self._ram_violation(uc, addr, size, f'mod code writing the firmware\'s {name!r}')
 
     # -- hooks ------------------------------------------------------------------------
     def _on_periph(self, uc, access, addr, size, value, kind):

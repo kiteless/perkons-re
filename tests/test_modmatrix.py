@@ -143,6 +143,13 @@ class TestModMatrix(unittest.TestCase):
             time.sleep(0.2)
         self.assertEqual(mem['state'], 'done')
         self.assertEqual(set(mem['areas']), {'main', 'voice', 'store'})
+        for a, v in mem['areas'].items():                 # the physical block, tiled by its ranges
+            b = v['block']
+            self.assertEqual(sum(r['size'] for r in b['ranges']), b['size'], a)
+            mods = [r for r in b['ranges'] if r['owner'] == 'mods']
+            self.assertEqual([(r['start'], r['size']) for r in mods], [(v['start'], v['size'])], a)
+        self.assertEqual(mem['takeovers'], {})
+        self.assertEqual(mem['borrows'], {})
         self.assertEqual(mem['errors'], {})
         self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), {'main': 0, 'voice': 0, 'store': 0})
         code, _ = self.call('/api/memory/nope')

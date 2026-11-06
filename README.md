@@ -200,10 +200,14 @@ hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the 
 `version_stamp` (`mm-<codes>`), and serves the result for download. Options: `--port N`,
 `--no-browser`, `--no-intro`.
 
-The **MEMORY** pane shows the RAM mods can use, in three areas: **MAIN** (M4 patch RAM,
-64 KB), **VOICE** (M7 RAM, 76 KB) and **STORE** (more M4 RAM, 111 KB). After an image is
-loaded it builds each option alone to see what it takes; the meters follow the ticks, and
-a mod that wouldn't fit can't be ticked (`tools/perkons/ram.py`).
+The **MEMORY** pane has a meter for each of the three RAM blocks mods use: **MAIN** (the
+M4's D2 SRAM, 288 KB), **VOICE** (the M7's DTCM, 128 KB) and **STORE** (the AXI SRAM,
+512 KB). Each meter is the whole block in address order, with the firmware's own parts
+shown grey; the mods' part of each (64 KB, 76 KB and 111 KB) fills green as mods are
+ticked, and FREE is what's left of it. A mod that takes over one of the firmware's own
+parts (STEP SAMPLER: the stock custom-sample memory) shows it green instead. After an
+image is loaded it builds each option alone to see what it takes; the meters follow the
+ticks, and a mod that wouldn't fit can't be ticked (`tools/perkons/ram.py`).
 
 ### Adding a mod to it
 

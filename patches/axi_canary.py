@@ -22,3 +22,8 @@ def apply(p, arg=None):
     h = m4host.host(p)
     h.add([os.path.join(SRC, 'axi_canary.c')], init='pk_canary_fill', on_save='pk_canary_report',
           defines={'PK_GAP_START': f'0x{lo:08x}u', 'PK_GAP_END': f'0x{hi:08x}u'})
+
+    def record():                       # after the host's link: the rest of STORE, all of it
+        end = max([a + n for a, n in p.ram.get('store', {}).values() if a is not None] + [lo])
+        p.ram_use('store', 'axi_canary', hi - end, end)
+    p.on_finish(record)
