@@ -156,13 +156,19 @@ def ram_sections(build_dir):
     """{(source, section): size} for the RAM (.bss*, .pk_axi*) the last build in build_dir
     linked in, from its map. The keys are the same in every build that links the same
     source, so the RAM of a shared source can be counted once across builds."""
+    return {key: size for key, (_, size) in ram_placed(build_dir).items()}
+
+
+def ram_placed(build_dir):
+    """ram_sections with the addresses: {(source, section): (addr, size)}."""
     with open(os.path.join(build_dir, 'objects.json')) as f:
         objs = json.load(f)
     with open(os.path.join(build_dir, 'cave.elf.map')) as f:
-        text = f.read()
+        text = f.read().partition('Linker script and memory map')[2]     # not the discarded sections before it
     out = {}
-    for name, size, obj in re.findall(r'^ (\.(?:bss|pk_axi)\S*)\s+0x[0-9a-f]+\s+0x([0-9a-f]+)\s+(\S+\.o)$', text, re.M):
+    for name, addr, size, obj in re.findall(r'^ (\.(?:bss|pk_axi)\S*)\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S+\.o)$', text, re.M):
         if int(size, 16):
             key = (objs.get(obj, obj), name)
-            out[key] = out.get(key, 0) + int(size, 16)
+            first, total = out.get(key, (int(addr, 16), 0))
+            out[key] = (first, total + int(size, 16))
     return out

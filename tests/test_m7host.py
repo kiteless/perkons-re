@@ -6,10 +6,10 @@ import tempfile
 import unittest
 
 from fixtures import SYMBOLS_V130, require_image
-from perkons import m4host, m7host, verify
+from perkons import catalog, m4host, m7host, ram, verify
 from perkons.emu import Symbols
 from perkons.fwimage import Image
-from perkons.patch import Patcher
+from perkons.patch import PatchError, Patcher
 
 DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm7host_demo.c')
 
@@ -84,6 +84,34 @@ class TestM7Host(unittest.TestCase):
         out = e.audio(2000)[0]
         self.assertEqual(e.r32(s['pk7_demo_got']), 7 | 1 << 8)
         self.assertGreater(max(map(abs, out)), 300, 'the trigger behind it still plays')
+
+    def mod_source(self, name, words):
+        """A mod's source with `words` words of RAM."""
+        src = os.path.join(self.tmp, f'{name}.c')
+        with open(src, 'w') as f:
+            f.write(f'#include <stdint.h>\nvolatile uint32_t {name}_ram[{words}];\n'
+                    f'void {name}_init(void) {{ {name}_ram[0] = 1; }}\n')
+        return lambda p, h: h.add([src], init=f'{name}_init')
+
+    def test_ram_of_two_mods_adds_up(self):
+        def voice(extra=None):
+            return {k: size for k, (_, size) in self.build(extra)[0].ram['voice'].items()}
+        base, a, b = voice(), voice(self.mod_source('aa', 16)), voice(self.mod_source('bb', 32))
+        memory = {'areas': {'voice': {}}, 'options': {'a': {'voice': a}, 'b': {'voice': b}}}
+        self.assertEqual(catalog.ram_used(['a', 'b'], memory)['voice'], sum(base.values()) + 4 * (16 + 32))
+
+    def test_ram_ranges_are_where_the_linker_put_them(self):
+        p, _, s = self.build()
+        own = p.ram['voice']
+        magic = next(v for k, v in own.items() if k.endswith(':.bss.pk7_host_magic'))
+        self.assertEqual(magic[0], s['pk7_host_magic'])
+        self.assertIsNone(ram.check(p.ram, p.symbols))
+
+    def test_fixed_range_over_the_hosts_ram_refused(self):
+        def clash(p, h):
+            p.ram_use('voice', 'clash', 4, ram.areas(p.symbols)['voice'][1] - m7host.HOST_RAM)
+        with self.assertRaisesRegex(PatchError, 'overlap'):
+            self.build(clash)
 
     def test_same_message_two_handlers_refused(self):
         with self.assertRaises(m7host.HostError):
