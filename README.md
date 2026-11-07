@@ -99,6 +99,8 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 Each mod's page says how to use it:
 [voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
 [voice-zibens](https://github.com/kiteless/perkons-re-mods/tree/main/voice-zibens),
+[voice-akords](https://github.com/kiteless/perkons-re-mods/tree/main/voice-akords),
+[voice-step-sampler](https://github.com/kiteless/perkons-re-mods/tree/main/voice-step-sampler),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
 [eight-lanes](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes),

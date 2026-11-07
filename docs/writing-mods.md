@@ -233,7 +233,9 @@ records it with `p.ram_use('voice', 'my_mod', size, addr)`. Include `pk7_host.h`
 
 ### A new voice engine: add it to voice-map
 
-A voice engine for any output is an extra voice-map engine, like `voice-zibens`: a
+A voice engine for any output is an extra voice-map engine, like `voice-zibens` (or
+`voice-step-sampler`, which also has an M4 side: `pk_vm.h` says which engine each voice
+runs): a
 `cVoice`-compatible C object (the stock field offsets, a 4-method vtable) built in an
 output's arena by a `build(obj, out)` function your patch registers by name,
 `p.shared['voice_map']['engines']['my-engine'] = {'sources': [...], 'include_dirs': [...],
