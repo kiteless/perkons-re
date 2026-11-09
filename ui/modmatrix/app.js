@@ -28,6 +28,7 @@ function pixInit(el) {
 }
 
 function pixRender(el) {
+  if (!el.getClientRects().length) return;      // not shown (another screen or tab): drawn when it is
   pixInit(el);
   const text = el.dataset.text || "";
   const s = Number(el.dataset.scale || 2);
@@ -37,7 +38,9 @@ function pixRender(el) {
     lines = [text];
   } else {
     const w = el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 640;
-    lines = wrap(text, Math.max(1, Math.floor(w / cw)));
+    const cols = Math.max(1, Math.floor(w / cw));
+    lines = wrap(text, cols);
+    if (el.dataset.oneline && lines.length > 1) lines = [lines[0].slice(0, Math.max(0, cols - 3)) + "..."];
   }
   const cols = Math.max(1, ...lines.map((l) => l.length));
   const cv = el._cv;
@@ -201,19 +204,29 @@ function intro(status, done, quick) {
   function frame(now) {
     if (finished) return;
     const W = (cv.width = innerWidth * DPR), H = (cv.height = innerHeight * DPR);
-    // the 320x200 screen at an integer scale, with a border around it
-    const s = Math.max(1, Math.floor(Math.min(W / 384, H / 272)));
+    // the 320x200 screen at an integer scale, framed as the page's screen is: padding and a
+    // light-blue border b wide, on black
+    const b = (innerWidth <= 600 ? 12 : 24) * DPR;
+    const s = Math.max(1, Math.floor(Math.min((W - 6 * b) / 320, (H - 6 * b) / 200)));
     const sw = 320 * s, sh = 200 * s, sx = Math.floor((W - sw) / 2), sy = Math.floor((H - sh) / 2);
+    const fx = sx - 2 * b, fy = sy - 2 * b, fw = sw + 4 * b, fh = sh + 4 * b;
 
-    if (loading) {
+    ctx.fillStyle = C64.black;
+    ctx.fillRect(0, 0, W, H);
+    if (loading) {                                   // raster stripes in the border
       if (!REDUCED || now - lastStripes > 500) { newStripes(H); lastStripes = now; }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fx, fy, fw, fh);
+      ctx.clip();
       for (const [y, h, c] of stripes) { ctx.fillStyle = c; ctx.fillRect(0, y, W, h); }
+      ctx.restore();
     } else {
       ctx.fillStyle = C64.lightblue;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(fx, fy, fw, fh);
     }
     ctx.fillStyle = C64.blue;
-    ctx.fillRect(sx, sy, sw, sh);
+    ctx.fillRect(sx - b, sy - b, sw + 2 * b, sh + 2 * b);
 
     const out = scr.slice();
     if (typing !== null) out.push(...(typing.match(/.{1,40}/g) || [""]));
@@ -313,7 +326,7 @@ function scroller() {
 /* ---- the three steps ---- */
 
 const state = { status: null, options: [], image: null, info: null, chosen: new Set(), building: false,
-  memory: null, hover: null, voices: [], tab: "mods" };
+  memory: null, hover: null, voices: [], tab: "mods", repos: [], ticked: new Set(), repoError: null };
 
 const FIRST_VOICE_SLOT = 5, MAX_VOICES = 12;     // slots 1-4: the official voices
 const isVoice = (o) => o.kind === "voice";
@@ -342,6 +355,46 @@ function say(el, cls, text) {
 
 function usable(o) {
   return state.info && state.info.official && state.info.supported && (!o.target || o.target === state.info.version);
+}
+
+/* what an option requires (transitively) that the ticked repos don't offer */
+function unoffered(o) {
+  const out = [], seen = new Set();
+  const walk = (id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const x = state.options.find((y) => y.id === id);
+    if (!x) { out.push(id); return; }
+    (x.requires || []).forEach(walk);
+  };
+  walk(o.id);
+  return out;
+}
+
+const repoOf = (id) => id.includes(":") ? id.split(":")[0] : id;
+
+/* FROM <its repo>, and its README beside it */
+function fromLine(o) {
+  if (!o.repo && !o.readme) return null;
+  const div = document.createElement("div");
+  div.className = "from";
+  if (o.repo) div.append(pix("p", "by", `FROM ${o.repo.toUpperCase()}`, { nowrap: "1" }));
+  if (o.readme) div.append(infoLink(o));
+  return div;
+}
+
+/* the mod's page (its README on GitHub), in a new tab */
+function infoLink(o) {
+  const a = document.createElement("a");
+  a.className = "info";
+  a.href = o.readme;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.append(pix("span", "", "README", { nowrap: "1" }));
+  for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
+    a.addEventListener(ev, () => requestAnimationFrame(() => a.querySelectorAll(".pix").forEach(pixRender)));
+  }
+  return a;
 }
 
 function clashes(o) {
@@ -492,7 +545,6 @@ function renderMem() {
     drawMeter(col.querySelector(".meter"), m.areas[a], used[a], hov ? Math.max(0, hov[a] - used[a]) : 0,
       taken, new Set([...ghost].filter((g) => !taken.has(g))));
   }
-  $("memkey").hidden = !done;
   const note = $("memnote");
   note.hidden = done;
   note.className = "pix " + (m && m.state === "error" ? "err" : "dim");
@@ -516,11 +568,108 @@ async function measure(image) {
   updatePatch();
 }
 
+/* ---- the screens: the repos, then the mods; the browser's back and forward move between
+ * them (history states) ---- */
+
+function showScreen(name) {
+  document.body.dataset.screen = name;
+  history.scrollRestoration = "manual";
+  scrollTo(0, 0);
+  updatePatch();
+  renderMem();
+}
+
+/* ---- step 1: the mod repos (tools/perkons/repos.py). The ticked ones are kept in this
+ * browser; until the user changes them, the config's "default" ones ---- */
+
+const TICKED_KEY = "modmatrix.repos";
+
+function savedTicks() {
+  try { return JSON.parse(localStorage.getItem(TICKED_KEY)); } catch (e) { return null; }
+}
+
+function saveTicks() {
+  try { localStorage.setItem(TICKED_KEY, JSON.stringify([...state.ticked])); } catch (e) { /* private mode */ }
+}
+
+async function loadRepos() {
+  const r = await api("/api/repos");
+  state.repos = r.repos;
+  state.repoError = r.error;
+  const saved = savedTicks();
+  const names = new Set(state.repos.filter((x) => !x.error).map((x) => x.repo));
+  state.ticked = new Set(Array.isArray(saved) ? saved.filter((n) => names.has(n))
+    : state.repos.filter((x) => x.default && !x.error).map((x) => x.repo));
+  renderRepos();
+}
+
+function renderRepos() {
+  const ul = $("repos");
+  ul.textContent = "";
+  if (state.repoError) ul.append(pix("li", "err", `?CAN'T GET THE REPO LIST: ${state.repoError.toUpperCase().slice(0, 120)}`));
+  for (const r of state.repos) {
+    const li = document.createElement("li");
+    li.classList.toggle("off", Boolean(r.error));
+    const label = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "sr";
+    box.checked = state.ticked.has(r.repo);
+    box.disabled = Boolean(r.error) || state.building;
+    box.addEventListener("change", () => {
+      if (box.checked) state.ticked.add(r.repo); else state.ticked.delete(r.repo);
+      saveTicks();
+      renderRepos();
+      setContinue();
+      loadMods();
+    });
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(pix("p", "name", `[${box.checked ? "X" : " "}] ${r.repo.toUpperCase()}`, { nowrap: "1" }),
+      pix("p", "req", r.error ? "UNAVAILABLE" : `${r.mods} MOD${r.mods === 1 ? "" : "S"}`, { nowrap: "1" }));
+    label.append(box, row);
+    if (r.note) label.append(pix("p", "note", r.note.toUpperCase()));
+    label.append(pix("p", "by", `BY ${r.author.toUpperCase()}${r.local ? " (ON THIS COMPUTER)" : ""}`, { nowrap: "1" }));
+    if (r.error) label.append(pix("p", "err", `?${r.error.toUpperCase().slice(0, 120)}`));
+    li.append(label);
+    ul.append(li);
+  }
+  if (!state.repos.length && !state.repoError) ul.append(pix("li", "dim", "NO REPOS CONFIGURED."));
+  ul.querySelectorAll(".pix").forEach(pixRender);
+}
+
+/* the repos can be ticked again (lock() disabled them) */
+function unlockRepos() {
+  for (const li of $("repos").querySelectorAll("li")) {
+    const box = li.querySelector("input");
+    if (box) box.disabled = li.classList.contains("off");
+  }
+  setContinue();
+}
+
+/* CONTINUE needs a ticked repo */
+function setContinue() {
+  const b = $("repos-ok");
+  b.disabled = !state.ticked.size;
+  b.querySelectorAll(".pix").forEach(pixRender);   // its text colour follows
+}
+
+/* the options of the ticked repos; what was chosen from a repo no longer ticked goes */
+async function loadMods() {
+  const q = [...state.ticked].map(encodeURIComponent).join(",");
+  state.options = (await api(`/api/mods?repos=${q}`)).options;
+  const offered = new Set(state.options.map((o) => o.id));
+  for (const id of [...state.chosen]) if (!offered.has(id)) deselect(id);
+  state.voices = state.voices.filter((id) => offered.has(id));
+  renderMods();
+  updatePatch();
+}
+
 function renderMods() {
   const ul = $("mods");
   ul.textContent = "";
   if (!state.options.length) {
-    ul.append(pix("li", "dim", "NO MODS FOUND. SET PERKONS_MODS (SEE README)."));
+    ul.append(pix("li", "dim", state.ticked.size ? "NO MODS IN THE TICKED REPOS." : "GO BACK AND TICK A REPO."));
   }
   for (const o of state.options.filter((x) => !isVoice(x) && !isEngineHost(x))) ul.append(optionItem(o, o.title));
   ul.querySelectorAll(".pix").forEach(pixRender);
@@ -528,12 +677,13 @@ function renderMods() {
   renderMem();
 }
 
-/* a tickable option: [X] TITLE, what it needs, its summary, why it can't be ticked */
+/* a tickable option: [X] TITLE, what it needs, its summary, why it can't be ticked (the
+ * descriptions stay in the manifests, not shown for now) */
 function optionItem(o, title) {
   const li = document.createElement("li");
   const over = state.chosen.has(o.id) ? null : overArea(withRequires([...picked(), o.id]));
   const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
-  const ok = usable(o) && !clashes(o).length && !over && !merr;
+  const ok = usable(o) && !clashes(o).length && !over && !merr && !unoffered(o).length;
   li.classList.toggle("off", !ok);
   const label = document.createElement("label");
   const box = document.createElement("input");
@@ -552,6 +702,8 @@ function optionItem(o, title) {
     pix("p", "req", `REQUIRES ${o.target || "ANY FIRMWARE"}`, { nowrap: "1" }));
   const sum = pix("p", "sum", o.summary.toUpperCase());
   label.append(box, row, sum);
+  const gone = unoffered(o);
+  if (gone.length) label.append(pix("p", "err", `NEEDS ${gone.map(repoOf).join(", ").toUpperCase()}: GO BACK AND TICK IT`));
   if (state.info && o.target && o.target !== state.info.version) {
     label.append(pix("p", "err", `NOT AVAILABLE FOR ${state.info.version}`));
   }
@@ -560,6 +712,8 @@ function optionItem(o, title) {
   if (over) label.append(pix("p", "err", `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`));
   if (merr) label.append(pix("p", "err", `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}`));
   li.append(label);
+  const from = fromLine(o);
+  if (from) li.append(from);
   li.addEventListener("mouseenter", () => { state.hover = o.id; renderMem(); });
   li.addEventListener("mouseleave", () => { state.hover = null; renderMem(); });
   box.addEventListener("focus", () => { state.hover = o.id; renderMem(); });
@@ -578,6 +732,8 @@ function voiceButton(o, label, onClick, ok, note) {
   for (const ev of ["mouseenter", "focus"]) b.addEventListener(ev, () => { state.hover = o.id; renderMem(); });
   for (const ev of ["mouseleave", "blur"]) b.addEventListener(ev, () => { state.hover = null; renderMem(); });
   li.append(b);
+  const from = fromLine(o);
+  if (from) li.append(from);
   return li;
 }
 
@@ -602,10 +758,12 @@ function renderVoices() {
   for (const o of voices.filter((x) => !state.voices.includes(x.id))) {
     const over = overArea(withRequires([...picked(), o.id]));
     const merr = state.memory && state.memory.errors && state.memory.errors[o.id];
+    const gone = unoffered(o);
     const note = !usable(o) && state.info ? `NOT AVAILABLE FOR ${state.info.version}`
+      : gone.length ? `NEEDS ${gone.map(repoOf).join(", ").toUpperCase()}: GO BACK AND TICK IT`
       : over ? `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`
       : merr ? `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}` : full ? "ALL SLOTS TAKEN" : null;
-    avail.append(voiceButton(o, o.title, () => install(o.id), usable(o) && !over && !merr && !full, note));
+    avail.append(voiceButton(o, o.title, () => install(o.id), usable(o) && !gone.length && !over && !merr && !full, note));
   }
   if (!voices.length) avail.append(pix("li", "dim", "NO VOICES FOUND."));
   for (const el of [host, inst, avail]) el.querySelectorAll(".pix").forEach(pixRender);
@@ -621,6 +779,8 @@ function showTab(tab) {
 
 function updatePatch() {
   const ready = state.info && state.info.official && state.info.supported && state.status && state.status.gcc;
+  lock("s1", !ready || state.building);
+  if (ready && !state.building) unlockRepos();
   lock("s2", !ready);
   $("patch").disabled = !ready || !picked().length || state.building;
   if (ready) renderMods();
@@ -706,7 +866,8 @@ async function main(info) {
   scroller();
   try {
     state.status = await api("/api/status");
-    state.options = (await api("/api/mods")).options;
+    await loadRepos();
+    await loadMods();
   } catch (e) {
     say($("fw"), "err", `?CAN'T REACH THE MOD MATRIX SERVER: ${e.message.toUpperCase()}`);
   }
@@ -715,17 +876,35 @@ async function main(info) {
   }
   renderMods();
   if (info && state.status) showInfo(info);
-  updatePatch();
+  history.replaceState({ screen: "repos" }, "");
+  showScreen("repos");
 
   $("patch").addEventListener("click", build);
+  $("repos-ok").addEventListener("click", () => {
+    history.pushState({ screen: "mods" }, "");
+    showScreen("mods");
+  });
+  $("repos-back").addEventListener("click", () => history.back());
+  addEventListener("popstate", (e) => showScreen((e.state && e.state.screen) || "repos"));
   for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
   // hover/focus colours change the text colour, which the canvases have to redraw for
-  for (const el of document.querySelectorAll(".patch, .dl, .tab")) {
+  for (const el of document.querySelectorAll(".patch, .dl, .tab, .go, .back")) {
     for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
       el.addEventListener(ev, () => requestAnimationFrame(() => el.querySelectorAll(".pix").forEach(pixRender)));
     }
   }
-  if (window.ResizeObserver) new ResizeObserver(() => renderMem()).observe($("screen"));
+  // the text is wrapped to its pane's width: when the screen pane changes width (the memory
+  // pane beside it grew or shrank, another screen), wrap it again
+  let screenW = 0, rewrap = 0;
+  if (window.ResizeObserver) new ResizeObserver((es) => {
+    const w = Math.round(es[0].contentRect.width);
+    if (w !== screenW) {
+      screenW = w;
+      cancelAnimationFrame(rewrap);
+      rewrap = requestAnimationFrame(() => $("screen").querySelectorAll(".pix").forEach(pixRender));
+    }
+    renderMem();
+  }).observe($("screen"));
   let rt;
   addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { pixAll(); renderMem(); }, 100); });
 }

@@ -19,7 +19,15 @@
     <p class="pix dim" data-align="center">BUILD MODDED FIRMWARE FROM YOUR OWN OFFICIAL IMAGE</p>
     <p id="fw" class="pix dim" aria-live="polite">NO FIRMWARE LOADED.</p>
 
+    <section id="s1" class="step locked" aria-disabled="true">
+      <h2 class="pix head">SELECT MOD SOURCE REPOS</h2>
+      <ul id="repos" class="opts"></ul>
+      <p class="pix warn">MAKE SURE YOU TRUST ANY MOD REPOS YOU SELECT, TREAT ALL MODS AS EXPERIMENTAL</p>
+      <button id="repos-ok" class="go"><span class="pix" data-nowrap="1">CONTINUE</span></button>
+    </section>
+
     <section id="s2" class="step locked" aria-disabled="true">
+      <button id="repos-back" class="back"><span class="pix" data-nowrap="1">&lt; CHANGE REPOS</span></button>
       <h2 class="pix head">CHOOSE YOUR MODS AND ENGINES</h2>
       <div id="tabs" role="tablist">
         <button class="tab" role="tab" data-tab="mods" aria-selected="true"><span class="pix" data-nowrap="1">MODS</span></button>
@@ -69,7 +77,6 @@
         <p class="pix dim" data-nowrap="1">FREE</p>
       </div>
     </div>
-    <p id="memkey" class="pix dim" hidden>EACH METER IS A WHOLE RAM BLOCK. GREY: STOCK FIRMWARE. GREEN: MODS. FREE: LEFT FOR MODS.</p>
     <p id="memnote" class="pix dim" aria-live="polite">LOAD FIRMWARE TO MEASURE.</p>
   </aside>
   <div id="go"><button id="patch" class="patch" disabled><span class="pix" data-nowrap="1" data-scale="4">PATCH IT</span></button></div>
@@ -78,7 +85,7 @@
 
   <section id="disclaimer">
     <p class="pix warn">DISCLAIMER</p>
-    <p class="pix">UNOFFICIAL. NOT AFFILIATED WITH OR ENDORSED BY ERICA SYNTHS. MODDED FIRMWARE IS FLASHED ENTIRELY AT YOUR OWN RISK: THE AUTHOR IS NOT RESPONSIBLE FOR BRICKED DEVICES, LOST SAMPLES OR SETTINGS, A VOIDED WARRANTY OR ANY OTHER DAMAGE. KEEP THE OFFICIAL FIRMWARE AND REFLASH IT BEFORE ANY SERVICE. A BUILT IMAGE CONTAINS ERICA SYNTHS' FIRMWARE: IT IS FOR YOUR OWN DEVICE ONLY, DON'T SHARE IT. EVERYTHING RUNS ON THIS COMPUTER; NOTHING IS UPLOADED ANYWHERE.</p>
+    <p class="pix">UNOFFICIAL. NOT AFFILIATED WITH OR ENDORSED BY ERICA SYNTHS. MODDED FIRMWARE IS FLASHED ENTIRELY AT YOUR OWN RISK: THE AUTHOR IS NOT RESPONSIBLE FOR BRICKED DEVICES, LOST SAMPLES OR SETTINGS, A VOIDED WARRANTY OR ANY OTHER DAMAGE. KEEP THE OFFICIAL FIRMWARE AND REFLASH IT BEFORE ANY SERVICE. A BUILT IMAGE CONTAINS ERICA SYNTHS' FIRMWARE: IT IS FOR YOUR OWN DEVICE ONLY, DON'T SHARE IT. EVERYTHING RUNS ON THIS COMPUTER; NOTHING IS UPLOADED ANYWHERE. MODS ARE DOWNLOADED FROM THEIR AUTHORS' GITHUB REPOS WHEN YOU PATCH; EACH REPO'S AUTHOR IS RESPONSIBLE FOR ITS MODS.</p>
   </section>
 </div>
 
