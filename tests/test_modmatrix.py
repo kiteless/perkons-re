@@ -10,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 
+from fake_github import FakeGitHub
 from fixtures import require_image
 from perkons import catalog
 from perkons.fwimage import Image
@@ -25,12 +26,29 @@ OPTIONS = {'options': [
 ]}
 
 
+# a mod repo on the pretend GitHub: one mod (its patch is the framework's tag_build), and
+# another directory a build of it must not download
+REMOTE = 'someone/extra'
+REMOTE_MEMORY = {'v1.3.0': {'ram': {'main': {'someone/extra:extra-mod/x.c:.bss.x': 64}}}}
+MANIFEST = {'format': 1, 'repo': REMOTE, 'description': 'Extra mods by someone. ' * 8,
+            'mods': [{'id': 'remote-tag', 'dir': 'extra-mod', 'title': 'REMOTE TAG', 'summary': 'A tag, from afar.',
+                      'description': 'Longer words.', 'readme': 'extra-mod/README.md', 'patches': ['tag_build'],
+                      'code': 'rt', 'kind': 'mod', 'requires': [], 'conflicts': [], 'target': '1.3.0',
+                      'memory': REMOTE_MEMORY}]}
+GITHUB = FakeGitHub({'repos': [{'repo': REMOTE}, {'repo': 'gone/missing', 'default': True}]},
+                    {REMOTE: {'perkons-repo.json': {'repo': REMOTE, 'description': 'x'},
+                              'perkons-mods.json': MANIFEST,
+                              'extra-mod/mod.json': {'options': []}, 'extra-mod/patches/README': 'no patches here',
+                              'extra-mod/README.md': '# remote tag', 'other-mod/big.bin': b'\0' * 4096}})
+
+
 class TestModMatrix(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with open(require_image('v1.3.0'), 'rb') as f:
             cls.raw = f.read()
         cls.tmp = tempfile.mkdtemp(prefix='pk-mm-')
+        cls.restore_github = GITHUB.install(os.path.join(cls.tmp, 'cache'))
         mod = os.path.join(cls.tmp, 'demo-mod')
         os.makedirs(os.path.join(mod, 'patches'))
         with open(os.path.join(mod, 'mod.json'), 'w') as f:
@@ -45,6 +63,7 @@ class TestModMatrix(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.restore_github()
         if cls.saved_mods is None:
             os.environ.pop('PERKONS_MODS', None)
         else:
@@ -65,10 +84,9 @@ class TestModMatrix(unittest.TestCase):
             return e.code, json.loads(e.read())
 
     # -- catalogue ---------------------------------------------------------------------
-    def test_options_take_target_and_risk_from_patches(self):
+    def test_options_take_the_target_from_patches(self):
         opts = {o['id']: o for o in catalog.options()}
-        self.assertEqual((opts['tag']['target'], opts['tag']['risk']), ('1.3.0', 'none'))
-        self.assertEqual((opts['any']['target'], opts['any']['risk']), (None, 'low'))
+        self.assertEqual((opts['tag']['target'], opts['any']['target']), ('1.3.0', None))
 
     def test_selection_rules(self):
         with self.assertRaises(catalog.CatalogError):
@@ -154,6 +172,52 @@ class TestModMatrix(unittest.TestCase):
         self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), {'main': 0, 'voice': 0, 'store': 0})
         code, _ = self.call('/api/memory/nope')
         self.assertEqual(code, 404)
+
+    # -- mod repos -------------------------------------------------------------------------
+    def test_repos_are_listed_with_their_description_and_author(self):
+        code, j = self.call('/api/repos')
+        self.assertEqual(code, 200)
+        rows = {r['repo']: r for r in j['repos']}
+        self.assertEqual([r['repo'] for r in j['repos']], ['gone/missing', REMOTE], 'A-Z after the main one')
+        r = rows[REMOTE]
+        self.assertEqual((r['author'], r['mods'], r['default'], r['error']), ('someone', 1, False, None))
+        self.assertTrue(r['description'].startswith('Extra mods by someone.'))
+        self.assertTrue(rows['gone/missing']['error'], 'no manifest: unavailable')
+
+    def test_mods_come_from_the_ticked_repos(self):
+        before = len(GITHUB.log)
+        ids = lambda q: {o['id'] for o in self.call('/api/mods' + q)[1]['options']}   # noqa: E731
+        self.assertEqual(ids('?repos='), {'tag', 'any', 'needs'}, 'mods outside any repo: always')
+        self.assertEqual(ids(f'?repos={REMOTE}'), {'tag', 'any', 'needs', f'{REMOTE}:remote-tag'})
+        o = next(o for o in self.call(f'/api/mods?repos={REMOTE}')[1]['options'] if o['id'] == f'{REMOTE}:remote-tag')
+        self.assertEqual((o['author'], o['title'], o['description']), ('someone', 'REMOTE TAG', 'Longer words.'))
+        self.assertEqual(o['readme'], f'https://github.com/{REMOTE}/blob/main/extra-mod/README.md')
+        self.assertFalse([u for u in GITHUB.log[before:] if 'extra-mod/' in u], 'nothing downloaded to list it')
+
+    def test_a_remote_mods_memory_comes_from_its_manifest(self):
+        code, info = self.call('/api/inspect', body=self.raw)
+        for _ in range(300):
+            _, mem = self.call(f'/api/memory/{info["image"]}')
+            if mem['state'] != 'measuring':
+                break
+            time.sleep(0.2)
+        self.assertEqual(mem['options'][f'{REMOTE}:remote-tag'], REMOTE_MEMORY['v1.3.0']['ram'])
+        self.assertEqual(catalog.ram_used([f'{REMOTE}:remote-tag'], mem)['main'], 64)
+
+    def test_a_build_downloads_only_its_mods(self):
+        code, info = self.call('/api/inspect', body=self.raw)
+        code, j = self.call('/api/build', json_body={'image': info['image'], 'options': [f'{REMOTE}:remote-tag'],
+                                                     'checks': False})
+        self.assertEqual(code, 200, j)
+        for _ in range(600):
+            _, snap = self.call(f'/api/job/{j["job"]}')
+            if snap['state'] != 'running':
+                break
+            time.sleep(0.2)
+        self.assertEqual(snap['state'], 'done', snap['log'][-8:])
+        self.assertIn('DOWNLOADING THE MODS...', snap['log'])
+        self.assertTrue(GITHUB.fetched(REMOTE, 'extra-mod/README.md'))
+        self.assertFalse(GITHUB.fetched(REMOTE, 'other-mod/'), 'only the chosen mod')
 
     def test_build_and_download(self):
         code, info = self.call('/api/inspect', body=self.raw)

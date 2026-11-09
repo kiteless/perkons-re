@@ -13,7 +13,7 @@ space   := $(subst ,, )
 -include local.mk
 export PERKONS_MODS
 
-.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile check-symbols port ui
+.PHONY: help setup tools-check test test-fast test-framework render build release unpack ghidra decompile check-symbols port ui manifest
 
 help:
 	@echo "make setup                          create .venv and install pinned deps"
@@ -25,6 +25,7 @@ help:
 	@echo "make render                         render all stock voices of \$$(IMG) to \$$(OUT)/stock"
 	@echo "make build PATCHES='a b:arg'        build builds/<patches>.img + emulator regression"
 	@echo "make ui                             Mod Matrix: build modded firmware in the browser"
+	@echo "make manifest MODS=../my-mods       write a mod repo's perkons-mods.json (what the Mod Matrix reads)"
 	@echo "make release REL=path/to/rel.json   versioned release folder (see tools/release.py)"
 	@echo "make ghidra VER=v1.3.0              import + analyze both cores into ghidra/projects/"
 	@echo "make check-symbols VER=v1.3.0       behavioural checks of symbols/<VER>-*.json"
@@ -84,3 +85,6 @@ port:
 
 ui:
 	$(PY) tools/modmatrix.py $(UI_ARGS)
+
+manifest:
+	$(PY) tools/manifest.py $(or $(MODS),$(firstword $(subst :, ,$(PERKONS_MODS))))

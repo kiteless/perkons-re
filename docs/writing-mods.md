@@ -74,7 +74,6 @@ framework's untracked `local.mk`: `PERKONS_MODS = ../perkons-re-mods`).
 """my-mod: one line on what it does."""
 TARGET = 'v1.3.0'        # firmware it's written for (None = any)
 SUMMARY = 'What it does, in one line'
-RISK = 'medium'          # none | low | medium | high
 
 def apply(p, arg=None):  # arg: text after ':' in `my_mod:arg`
     ...
@@ -315,8 +314,11 @@ write WAVs to `out/` (gitignored) to listen before hardware.
 }
 ```
 
-`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, sl, et, lf, pb). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
-them along). Only list user-facing options; development patches stay out. `make ui` to check it appears.
+`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, et, lf, pb, ak, ss, zb). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
+them along); one from another mod repo is written in full, `owner/name:id` (a voice
+engine: `kiteless/perkons-re-mods:voice-map`). Optional: `description`, a longer text, and
+`readme`, the mod's page from the repo root (default: the mod's `README.md`), which the
+Mod Matrix links, and `author`, when it isn't the repo's owner (`""`: none given). Only list user-facing options; development patches stay out. `make ui` to check it appears.
 
 Give the mod a user-facing `README.md`: what it does, how to use it, and a "Getting it"
 section pointing to perkons-re's [Get modded firmware](../README.md#get-modded-firmware)
@@ -331,3 +333,34 @@ Keep the official firmware ready as the way back, flash the build
 
 A release definition in `perkons-re-mods/releases/*.json` (see `tools/release.py`) names
 the patches and a tag; `make release REL=...` builds, stamps and records the commits.
+
+## 9. Your own mod repo
+
+Mods don't have to be merged into perkons-re-mods: any GitHub repo laid out the same way can
+be offered by the Mod Matrix, with you as its author.
+
+* **Layout**: your mods at the top level (each a folder with its `mod.json`, `patches/`,
+  `src/`, as above), and a `perkons-repo.json` at the root, written by you:
+
+  ```json
+  {"repo": "your-name/your-mods", "description": "One line about your mods."}
+  ```
+
+* **Ids** are yours to choose within your repo (the Mod Matrix shows them as
+  `your-name/your-mods:id`). **Patch module names** (`patches/<name>.py`) are found by name in
+  a build, so make them distinct (prefix them with your repo's name): two repos with the
+  same patch name can't be built together.
+* **The manifest**: `make manifest MODS=../your-mods` writes `perkons-mods.json` at your
+  repo's root: every option with what it takes of MAIN, VOICE and STORE, measured by
+  building it (with your official image, and the repos your mods require on disk in
+  `PERKONS_MODS`). Commit it with your mods, and run it again whenever they change: the Mod
+  Matrix lists your mods and draws the meters from it, and downloads a mod only when
+  someone builds it. (The build checks memory again exactly, so a stale manifest can't
+  overflow anything, but it can show the wrong room.)
+* **Getting listed**: the repos the Mod Matrix offers are in `repos.json` in
+  [perkons-re-mods](https://github.com/kiteless/perkons-re-mods); ask for yours to be added
+  (an issue or pull request there). Users tick the repos they want, and are told that ticking
+  one trusts its author: your Python runs on their computer when they build, and your C on
+  their Pērkons. Keep both honest, and never put firmware or anything built from it in your
+  repo.
+

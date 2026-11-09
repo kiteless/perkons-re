@@ -9,9 +9,11 @@ What it does, each time:
   2. creates a private Python environment in .venv and installs this project's Python
      packages into it (first run only; nothing is installed system-wide)
   3. checks for the Arm GCC compiler (needed to build mods) and says how to install it
-  4. finds the mods (../perkons-re-mods, PERKONS_MODS, or local.mk), and offers to
-     download them with git if they're missing
-  5. starts the Mod Matrix at http://127.0.0.1:6464/ and opens it
+  4. starts the Mod Matrix at http://127.0.0.1:6464/ and opens it
+
+The Mod Matrix gets the mods from their repos on GitHub (the list is in
+kiteless/perkons-re-mods: repos.json), and downloads only the ones you build. To work on
+mods from a folder on this computer instead, set PERKONS_MODS (or local.mk) to it.
 
 Options are passed on to the Mod Matrix: --port N, --no-browser, --no-intro.
 """
@@ -24,7 +26,6 @@ import venv
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 VENV = os.path.join(ROOT, '.venv')
-MODS_REPO = 'https://github.com/kiteless/perkons-re-mods'
 WINDOWS = platform.system() == 'Windows'
 
 
@@ -74,6 +75,8 @@ def check_compiler():
 
 
 def mods_dir():
+    """Mods on this computer to offer instead of downloading them (a developer's clone):
+    PERKONS_MODS, else local.mk's; None: the mods come from GitHub."""
     if os.environ.get('PERKONS_MODS'):
         return os.environ['PERKONS_MODS']
     local_mk = os.path.join(ROOT, 'local.mk')
@@ -84,26 +87,15 @@ def mods_dir():
                 if key.strip() == 'PERKONS_MODS' and value.strip():
                     path = value.strip()
                     return path if os.path.isabs(path) else os.path.normpath(os.path.join(ROOT, path))
-    default = os.path.normpath(os.path.join(ROOT, '..', 'perkons-re-mods'))
-    if os.path.isdir(default):
-        return default
-    if not shutil.which('git'):
-        stop(f'The mods weren\'t found. Download them from {MODS_REPO} into\n    {default}\n'
-             'and run this script again.')
-    answer = input(f'[mod matrix] The mods aren\'t here yet. Download them from {MODS_REPO}\n'
-                   f'             into {default}? [Y/n] ').strip().lower()
-    if answer not in ('', 'y', 'yes'):
-        stop(f'No mods to offer. Put them in {default} (or set PERKONS_MODS) and run this again.')
-    subprocess.run(['git', 'clone', MODS_REPO, default], check=True)
-    return default
+    return None
 
 
 def main():
     py = setup_python()
     check_compiler()
     mods = mods_dir()
-    say(f'mods: {mods}')
-    env = dict(os.environ, PERKONS_MODS=mods)
+    say(f'mods on this computer: {mods}' if mods else 'mods: from their repos on GitHub')
+    env = dict(os.environ, PERKONS_MODS=mods) if mods else dict(os.environ)
     say('starting; press Ctrl-C in this window to stop')
     try:
         return subprocess.call([py, os.path.join(ROOT, 'tools', 'modmatrix.py'), *sys.argv[1:]], env=env)

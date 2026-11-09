@@ -62,8 +62,9 @@ py start_modmatrix.py
 ```
 
 The first time, this sets things up for you: a private Python environment inside the
-`perkons-re` folder, and the mods, downloaded next to it into `perkons-re-mods`. Then
-the Mod Matrix opens in your browser at http://127.0.0.1:6464/. If something is
+`perkons-re` folder. Then the Mod Matrix opens in your browser at http://127.0.0.1:6464/.
+It gets the list of mods from GitHub each time it starts, and downloads only the mods you
+build. If something is
 missing, the script says what to install. To stop it, press Ctrl-C in the terminal. After
 updating perkons-re or the mods, stop it and start it again (the page says so if you
 don't).
@@ -74,14 +75,19 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 1. The start screen asks for your firmware: drop the official `perkons_v1.3.0-0-force.img`
    on it (or click to choose it). It only accepts an unmodified official image; once it has
    loaded, the Mod Matrix opens with it. To use another image, reload the page.
-2. On the **MODS** tab, tick the mods you want. Some need another mod; the page ticks it
+2. Select the mod source repos: mod repos on GitHub. The main one
+   ([perkons-re-mods](https://github.com/kiteless/perkons-re-mods)) is ticked and listed
+   first; others come from other authors. Only tick repos you trust: their code runs on your
+   computer when you build, and on your Pērkons. Treat all mods as experimental. Press
+   **CONTINUE**; the browser's back button brings you back here to change them.
+3. On the **MODS** tab, tick the mods you want. Some need another mod; the page ticks it
    for you.
-3. To add voice engines, go to the **ENGINES** tab, tick **ENABLE CUSTOM VOICE ENGINES**
+4. To add voice engines, go to the **ENGINES** tab, tick **ENABLE CUSTOM VOICE ENGINES**
    (the voice-map mod), then click voices in AVAILABLE to install them. They take voice slots 5, 6, … in the order you add them (slots
    1–4 are the official voices); click one in TO BE INSTALLED to remove it. That order is the
    engine page's columns on the unit, so keep it the same when you rebuild.
-4. Press **PATCH IT** and wait about a minute.
-5. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
+5. Press **PATCH IT** and wait about a minute.
+6. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
 
 ### 5. Flash it
 
@@ -175,7 +181,7 @@ Step by step, from RE to Mod Matrix to hardware: **[docs/writing-mods.md](docs/w
 The short version:
 
 Start from `patches/example_hook.py` + `patches/src/m7/example_hook.c`. A patch module
-declares `TARGET` (firmware version, or `None` for any), `SUMMARY`, `RISK` and
+declares `TARGET` (firmware version, or `None` for any), `SUMMARY` and
 `apply(p, arg=None)`. Patch by **name**, never by address: `p.redirect_call(core, site,
 ...)`, `p.replace_with_call`, `p.replace_word`, with sites, offsets and constants from
 `symbols/` (C code gets them as `SYM_`/`OFF_`/`CONST_` defines). Every write states the
@@ -202,22 +208,31 @@ hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the 
 `version_stamp` (`mm-<codes>`), and serves the result for download. Options: `--port N`,
 `--no-browser`, `--no-intro`.
 
+Mods come from **mod repos** on GitHub (`tools/perkons/repos.py`): the list is
+`repos.json` in [perkons-re-mods](https://github.com/kiteless/perkons-re-mods), and each
+repo's `perkons-mods.json` (written by `make manifest`) says what mods it has and what they
+take of each RAM area, so the Mod Matrix can list them and draw the meters without
+downloading anything. A build downloads the chosen mods (from the commit each repo is at)
+into `.cache/repos/`. A repo on disk in `PERKONS_MODS` (a developer's clone) is used from
+there instead, and its mods are measured by building them.
+
 The **MEMORY** pane has a meter for each of the three RAM blocks mods use: **MAIN** (the
 M4's D2 SRAM, 288 KB), **VOICE** (the M7's DTCM, 128 KB) and **STORE** (the AXI SRAM,
 512 KB). Each meter is the whole block in address order, with the firmware's own parts
 shown grey; the mods' part of each (64 KB, 76 KB and 111 KB) fills green as mods are
 ticked, and FREE is what's left of it. A mod that takes over one of the firmware's own
-parts (STEP SAMPLER: the stock custom-sample memory) shows it green instead. After an
-image is loaded it builds each option alone to see what it takes; the meters follow the
-ticks, and a mod that wouldn't fit can't be ticked (`tools/perkons/ram.py`).
+parts (STEP SAMPLER: the stock custom-sample memory) shows it green instead. The meters
+follow the ticks, and a mod that wouldn't fit can't be ticked; the build itself checks
+again, exactly (`tools/perkons/ram.py`).
 
 ### Adding a mod to it
 
 Mods appear through a `mod.json` in the mod folder (see `tools/perkons/catalog.py`):
 title, summary, the patch specs, a two-letter code for the build tag, and optional
-`conflicts` (option ids that can't be combined). Target version and risk come from the
+`conflicts` (option ids that can't be combined). The target version comes from the
 patch modules. Mods without a `mod.json` (and development patches not listed in one)
-aren't offered.
+aren't offered. To offer mods of your own without merging them into perkons-re-mods,
+publish a mod repo: [docs/writing-mods.md](docs/writing-mods.md#9-your-own-mod-repo).
 
 ## Releases
 

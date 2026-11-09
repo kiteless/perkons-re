@@ -38,6 +38,7 @@ import sys
 import tempfile
 import threading
 import traceback
+import urllib.parse
 import uuid
 import webbrowser
 from http import HTTPStatus
@@ -46,8 +47,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.insert(0, ROOT)
-from build import apply_specs, build_image, m7_code, regression  # noqa: E402
-from perkons import catalog, cbuild, ram, srchash  # noqa: E402
+from build import build_image, m7_code, regression  # noqa: E402
+from perkons import catalog, cbuild, mods, ram, repos, srchash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 from perkons.mods import mod_dirs  # noqa: E402
 
@@ -115,6 +116,10 @@ class App:
         self.work = tempfile.mkdtemp(prefix='modmatrix-')
         self.intro = intro
         self.code = code_stamp()
+        self.local = catalog.options()       # mods on disk (PERKONS_MODS)
+        self.repo_list, self.offered, self.repo_error = None, [], None
+        self.repos_lock = threading.Lock()
+        threading.Thread(target=self.load_repos, daemon=True).start()
 
     def status(self):
         try:
@@ -134,10 +139,63 @@ class App:
             threading.Thread(target=self.measure, args=(image_id,), daemon=True).start()
         return {'image': image_id, **info}
 
+    # -- repos: where the mods come from (perkons.repos) ---------------------------------
+    def load_repos(self):
+        """The configured repos and their manifests, fetched once (in the background at
+        start); a repo whose mods are on disk (PERKONS_MODS: a developer's clone) is read
+        from there instead."""
+        with self.repos_lock:
+            if self.repo_list is not None:
+                return
+            local = {}
+            for o in self.local:
+                if o.get('repo'):
+                    local.setdefault(o['repo'].lower(), []).append(o)
+            out, offered = [], [o for o in self.local if not o.get('repo')]
+            try:
+                configured = repos.config()
+            except repos.RepoError as e:
+                configured, self.repo_error = [], str(e)
+            names = {r['repo'].lower() for r in configured}
+            for name in sorted(set(local) - names):     # on disk but not in the list: offered too
+                configured.append({'repo': local[name][0]['repo'], 'ref': 'main', 'default': True, 'note': ''})
+            for r in configured:
+                row = {'repo': r['repo'], 'author': r['repo'].split('/')[0], 'default': r['default'],
+                       'description': '', 'note': r['note'], 'mods': 0, 'local': r['repo'].lower() in local, 'error': None}
+                if row['local']:
+                    opts = local[r['repo'].lower()]
+                    root = opts[0]['local']
+                    with open(os.path.join(root, repos.REPO_FILE)) as f:
+                        row['description'] = json.load(f).get('description', '')
+                else:
+                    try:
+                        m = repos.manifest(r['repo'], r['ref'])
+                        opts = repos.options(m, r['ref'])
+                        row['description'] = m.get('description', '')
+                    except (repos.RepoError, KeyError, TypeError) as e:
+                        opts, row['error'] = [], str(e)
+                row['mods'] = len(opts)
+                offered += opts
+                out.append(row)
+            out.sort(key=lambda r: (r['repo'].lower() != repos.HOME, r['repo'].lower()))   # the main one, then A-Z
+            self.repo_list, self.offered = out, offered
+
+    def repos(self):
+        self.load_repos()
+        return {'repos': self.repo_list, 'error': self.repo_error}
+
+    def options(self, ticked=None):
+        """The options from the ticked repos (all of them if None), and those of mods on
+        disk outside any repo."""
+        self.load_repos()
+        ticked = None if ticked is None else {r.lower() for r in ticked}
+        return [o for o in self.offered if not o.get('repo') or ticked is None or o['repo'].lower() in ticked]
+
     def measure(self, image_id):
-        """Build every option alone (with what it requires, no image written) and record the
-        RAM it takes, for the MAIN / VOICE / STORE meters. Kept in .cache/memory/ by a hash
-        of the image and every build input, so a restart with nothing changed is instant."""
+        """Build every option on disk alone (with what it requires, no image written) and
+        record the RAM it takes, for the MAIN / VOICE / STORE meters; a downloadable mod's
+        comes from its repo's manifest (memory_for). Kept in .cache/memory/ by a hash of the
+        image and every build input, so a restart with nothing changed is instant."""
         img, _, info = self.images[image_id]
         cache = srchash.path('memory', srchash.key(info['sha256'], MEMORY_FORMAT), '.json')
         if os.path.exists(cache):
@@ -155,28 +213,61 @@ class App:
                  for a, (lo, hi) in ram.areas(syms).items()}
         opts, takeovers, borrows, errors = {}, {}, {}, {}
         with self.build_lock:
-            by_id = {o['id']: o for o in catalog.options()}
+            by_id = {o['id']: o for o in self.local}
             for o in by_id.values():
                 if o['target'] not in (None, info['version']):
                     continue
                 specs = list(dict.fromkeys(s for i in catalog.with_requires([o['id']], by_id)
                                            for s in by_id[i]['patches']))
                 try:
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        p = apply_specs(img, specs, symbols, os.path.join(self.work, 'measure', o['id']))
-                    opts[o['id']] = {a: {k: size for k, (_, size) in own.items()} for a, own in p.ram.items()}
-                    if p.ram_takeovers:
-                        takeovers[o['id']] = p.ram_takeovers
-                    if p.ram_borrows:
-                        borrows[o['id']] = p.ram_borrows
+                    got = catalog.measure(img, specs, symbols, os.path.join(self.work, 'measure', o['id'].replace('/', '_')))
+                    opts[o['id']] = got['ram']
+                    if got['takeovers']:
+                        takeovers[o['id']] = got['takeovers']
+                    if got['borrows']:
+                        borrows[o['id']] = got['borrows']
                 except BaseException as e:   # also sys.exit from a target mismatch
                     errors[o['id']] = str(e)
-        self.memory[image_id] = m = {'state': 'done', 'areas': areas, 'options': opts, 'takeovers': takeovers,
-                                     'borrows': borrows,
-                                     'errors': errors}
+        self.memory[image_id] = m = {'state': 'done', 'version': info['version'], 'areas': areas, 'options': opts,
+                                     'takeovers': takeovers, 'borrows': borrows, 'errors': errors}
         if not errors:
             with open(cache, 'w') as f:
                 json.dump(m, f)
+
+    def memory_for(self, image_id):
+        """The measurement, with every downloadable mod's RAM from its repo's manifest."""
+        m = self.memory.get(image_id)
+        if not m or m.get('state') != 'done':
+            return m
+        m = dict(m, options=dict(m['options']), takeovers=dict(m['takeovers']), borrows=dict(m['borrows']),
+                 errors=dict(m['errors']))
+        for o in self.options():
+            if o['id'] in m['options'] or o.get('local'):
+                continue
+            if o['target'] not in (None, m['version']):
+                continue
+            mem = o['memory'].get(f'v{m["version"]}')
+            if not mem:
+                m['errors'][o['id']] = f'{o["repo"]} has no memory figures for firmware {m["version"]}'
+                continue
+            m['options'][o['id']] = mem.get('ram', {})
+            for key in ('takeovers', 'borrows'):
+                if mem.get(key):
+                    m[key][o['id']] = mem[key]
+        return m
+
+    def fetch_mods(self, chosen):
+        """The chosen downloadable mods, each repo's at the commit it's at now: their
+        directories, for the build."""
+        dirs = []
+        by_repo = {}
+        for o in chosen:
+            if not o.get('local'):
+                by_repo.setdefault((o['repo'], o['ref']), []).append(o['dir'])
+        for (repo, ref), want in by_repo.items():
+            root = repos.download(repo, ref, sorted(set(want)))
+            dirs += [os.path.join(root, *d.split('/')) for d in sorted(set(want))]
+        return dirs
 
     def start_build(self, req):
         if req.get('image') not in self.images:
@@ -185,8 +276,8 @@ class App:
         if not info['supported']:
             raise catalog.CatalogError(f'firmware {info["version"]} is not supported yet')
         chosen, specs = catalog.check_selection(list(req.get('options', [])), info['version'],
-                                                voices=list(req.get('voices', [])))
-        mem = self.memory.get(req['image'], {})
+                                                voices=list(req.get('voices', [])), offered=self.options())
+        mem = self.memory_for(req['image']) or {}
         if mem.get('state') == 'done':
             catalog.check_memory([o['id'] for o in chosen], mem)
         job = Job(img, raw, chosen, specs, bool(req.get('checks', True)))
@@ -206,6 +297,9 @@ class App:
             try:
                 with contextlib.redirect_stdout(LineLog(job)):
                     job.say(f'MODS: {titles}')
+                    if any(not o.get('local') for o in job.chosen):
+                        job.say('DOWNLOADING THE MODS...')
+                    mods.EXTRA[:] = self.fetch_mods(job.chosen)     # (one build at a time)
                     job.say(f'TAG: {tag}')
                     built, p = build_image(job.img, out, specs, symbols, build_dir=os.path.join(d, 'obj'),
                                            extra_kwargs={'version_stamp': {'banner': f'+ mod matrix: {titles}'}})
@@ -221,6 +315,8 @@ class App:
                 for line in traceback.format_exc().splitlines()[-6:]:
                     job.say(line)
                 job.state = 'failed'
+            finally:
+                mods.EXTRA[:] = []
 
 
 def make_handler(app):
@@ -262,10 +358,14 @@ def make_handler(app):
             path = self.path.split('?')[0]
             if path == '/api/status':
                 return self.guarded(app.status)
+            if path == '/api/repos':
+                return self.guarded(app.repos)
             if path == '/api/mods':
-                return self.guarded(lambda: {'options': catalog.options()})
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
+                ticked = [r for r in q.get('repos', [''])[0].split(',') if r] if 'repos' in q else None
+                return self.guarded(lambda: {'options': app.options(ticked)})
             if path.startswith('/api/memory/'):
-                mem = app.memory.get(path.rsplit('/', 1)[1])
+                mem = app.memory_for(path.rsplit('/', 1)[1])
                 if not mem:
                     return self.send_json({'error': 'load a firmware image first'}, HTTPStatus.NOT_FOUND)
                 return self.send_json(mem)
@@ -322,8 +422,6 @@ def main():
     server, app = serve(a.port, intro=not a.no_intro)
     url = f'http://127.0.0.1:{server.server_address[1]}/'
     print(f'PERKONS MOD MATRIX at {url}  (ctrl-c to quit)')
-    if not os.environ.get('PERKONS_MODS'):
-        print('note: PERKONS_MODS is not set, so no mods will be offered (see local.mk)')
     if not a.no_browser:
         threading.Timer(0.5, webbrowser.open, (url,)).start()
     try:

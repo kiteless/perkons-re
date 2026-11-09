@@ -10,13 +10,15 @@ A mod is a directory with this layout (every part optional except patches/):
                               symbols by perkons.emu.Symbols; ported with them)
 
 PERKONS_MODS lists mod directories, or directories containing mods, separated by ':'.
-(The Makefile reads it from the environment or from an untracked local.mk.)
+(The Makefile reads it from the environment or from an untracked local.mk.) The Mod Matrix
+adds the mods it downloaded for a build to EXTRA (perkons.repos).
 """
 import importlib.util
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+EXTRA = []              # more mod directories (a Mod Matrix build's downloaded mods)
 
 
 def mod_dirs():
@@ -28,7 +30,7 @@ def mod_dirs():
         elif os.path.isdir(entry):
             out += sorted(os.path.join(entry, d) for d in os.listdir(entry)
                           if os.path.isdir(os.path.join(entry, d, 'patches')))
-    return out
+    return out + [d for d in EXTRA if d not in out]
 
 
 def add_to_path(mod_dir):
