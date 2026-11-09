@@ -18,7 +18,6 @@ from perkons import m4host
 
 TARGET = 'v1.3.0'
 SUMMARY = 'Test image: D3 canary, save/load timing, SD card speed (BENCH.TXT)'
-RISK = 'low'
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'm4')
 

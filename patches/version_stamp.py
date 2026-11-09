@@ -15,7 +15,6 @@ import struct
 
 TARGET = None  # any version
 SUMMARY = 'Identify the build: __FVERSION__ tag (shows in INFO.TXT) + boot banner'
-RISK = 'low'
 
 MARKER = b'__FVERSION__'
 GIT_FIELD = 12          # bytes, NUL padded

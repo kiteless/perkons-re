@@ -36,7 +36,7 @@ def apply_specs(base, specs, symbols_m7, build_dir, extra_kwargs=None):
         mod = load_patch(name)
         if mod.TARGET not in (None, f'v{base.version}'):
             sys.exit(f'{name} targets {mod.TARGET}, base image is v{base.version}')
-        print(f'[{mod.RISK:>6}] {spec}: {mod.SUMMARY}')
+        print(f'{spec}: {mod.SUMMARY}')
         kw = (extra_kwargs or {}).get(name, {})
         mod.apply(p, arg, **kw) if arg else mod.apply(p, **kw)
     p.finish()

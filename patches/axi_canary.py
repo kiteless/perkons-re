@@ -12,7 +12,6 @@ from perkons import m4host
 
 TARGET = 'v1.3.0'
 SUMMARY = 'Test image: report whether the unreferenced AXI SRAM gets overwritten (CANARY.TXT)'
-RISK = 'low'
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'm4')
 

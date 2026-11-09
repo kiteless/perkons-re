@@ -7,7 +7,6 @@ built with our own CRCs.
 """
 TARGET = 'v1.3.0'
 SUMMARY = 'Change the boot-banner git tag in M4 and M7 to "re-patch"'
-RISK = 'none'
 
 OLD = b'gd5b5810'
 NEW = b're-patch'

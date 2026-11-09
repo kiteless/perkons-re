@@ -10,7 +10,6 @@ from perkons import cbuild
 
 TARGET = 'v1.3.0'
 SUMMARY = 'Example: wrap main()\'s wire_voices() call with C code (no behaviour change)'
-RISK = 'low'
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'm7')
 
