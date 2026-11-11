@@ -150,7 +150,7 @@ for the ones it handled; the rest get the stock handling, so the trigger keys pl
 voices and the page buttons leave, as on the config menu. Return nonzero for the release
 of a page button held to open the page: stock, releasing a long-held page button goes
 to the MAIN page. `void draw(void)` sets the page's step LEDs each UI update; `enter` /
-`leave` run when it's entered and left (e.g. save there). voice-map's engine page is one.
+`leave` run when it's entered and left (e.g. save there). The voice map's engine page is one.
 
 The config page's event and render words are chained like any hook: a mod registering
 `h.replace_word('cfg_page.event_word', ...)` runs before the host's toggles.
@@ -164,7 +164,8 @@ In C, use ordinary globals: both RAM areas are zeroed at boot. Where they go:
 
 The Mod Matrix shows these (and the M7's **VOICE**, below) as memory meters, each the
 whole physical block with the firmware's own parts drawn in (`ram.blocks`). It measures
-every option by building it (with what it requires), so a combination that doesn't fit
+the platform (the voice map, in every build) and every option on it (with what it
+requires), so a combination that doesn't fit
 can't be ticked, and the build refuses it (`tools/perkons/ram.py`). VOICE is the M7's (the
 M4 can't reach it). The M7 reads M4 RAM and STORE as they are (its data cache is off), but
 for settings send it a config message; share memory both ways only for bulk data, at a
@@ -230,20 +231,21 @@ triggers and is handled in the audio callback before the trigger messages queued
 time. `.bss` goes in a 4 KB part of the **VOICE** area; a mod with a fixed range
 records it with `p.ram_use('voice', 'my_mod', size, addr)`. Include `pk7_host.h`.
 
-### A new voice engine: add it to voice-map
+### A new voice engine: add it to the voice map
 
-A voice engine for any output is an extra voice-map engine, like `voice-zibens` (or
-`voice-step-sampler`, which also has an M4 side: `pk_vm.h` says which engine each voice
-runs): a
+The voice map (`tools/perkons/voicemap.py`, [docs/voice-map.md](voice-map.md)) is part of
+the platform: every build has it, so an engine mod needs no other mod. A voice engine for
+any output is an extra voice-map engine, like `voice-zibens` (or `voice-step-sampler`,
+which also has an M4 side: `pk_vm.h` says which engine each voice runs): a
 `cVoice`-compatible C object (the stock field offsets, a 4-method vtable) built in an
 output's arena by a `build(obj, out)` function your patch registers by name,
-`p.shared['voice_map']['engines']['my-engine'] = {'sources': [...], 'include_dirs': [...],
+`voicemap.engines(p)['my-engine'] = {'sources': [...], 'include_dirs': [...],
 'build': 'pk_my_build', 'slot': int(arg) if arg else None}`. The patch's argument is the
 voice slot (5-16) it's installed in: its engine number and its column on the engine page
-(no slot: the next free one). In mod.json give the option `"kind": "voice"` and
-`"requires": ["voice-map"]`: the Mod Matrix then lists it on the ENGINES tab (where the mod it requires is
-the ENABLE CUSTOM VOICE ENGINES switch), and passes the
-slot (`my_engine:6`) from the order it's installed in.
+(no slot: the next free one). In mod.json give the option `"kind": "voice"`: the Mod
+Matrix then lists it on the ENGINES tab, and passes the slot (`my_engine:6`) from the
+order it's installed in. (A `requires` on `voice-map`, from before it was the platform,
+is ignored.)
 
 ### C rules (both cores)
 
@@ -287,7 +289,7 @@ test module in its own process (`tools/run_tests.py -j N`; `--serial` for one pr
 ## 5. Build and listen
 
 ```sh
-make build PATCHES='my_mod'               # builds/my_mod.img + voice regression (36 renders)
+make build PATCHES='my_mod'               # builds/my_mod.img (+ the platform) + voice regression (36 renders)
 make build PATCHES='fx_reverb my_mod'     # combinations
 ```
 
@@ -314,9 +316,8 @@ write WAVs to `out/` (gitignored) to listen before hardware.
 }
 ```
 
-`code` is two letters for the build tag in `INFO.TXT` (taken: vm, rv, fz, et, lf, pb, ak, ss, zb). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
-them along); one from another mod repo is written in full, `owner/name:id` (a voice
-engine: `kiteless/perkons-re-mods:voice-map`). Optional: `description`, a longer text, and
+`code` is two letters for the build tag in `INFO.TXT` (taken: rv, fz, et, lf, pb, ak, ss, zb; `mm-base` is the platform alone). `requires` lists option ids that must be in the same build (the Mod Matrix ticks
+them along); one from another mod repo is written in full, `owner/name:id`. Optional: `description`, a longer text, and
 `readme`, the mod's page from the repo root (default: the mod's `README.md`), which the
 Mod Matrix links, and `author`, when it isn't the repo's owner (`""`: none given). Only list user-facing options; development patches stay out. `make ui` to check it appears.
 

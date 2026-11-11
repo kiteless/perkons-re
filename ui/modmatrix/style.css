@@ -84,7 +84,6 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 
 /* ENGINES: INSTALLED (from slot 5) and AVAILABLE side by side */
 #voices > .pix { margin-bottom: 20px; }
-.vcols[hidden], #slotnote[hidden] { display: none; }
 .vcols { display: flex; gap: 24px; align-items: flex-start; }
 .vcol { flex: 1 1 0; min-width: 0; }
 .vcol > .head { margin-bottom: 12px; }

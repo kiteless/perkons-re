@@ -330,8 +330,6 @@ const state = { status: null, options: [], image: null, info: null, chosen: new 
 
 const FIRST_VOICE_SLOT = 5, MAX_VOICES = 12;     // slots 1-4: the official voices
 const isVoice = (o) => o.kind === "voice";
-/* what the voices require (voice-map) sits on the ENGINES tab as its on/off switch */
-const isEngineHost = (o) => state.options.some((v) => isVoice(v) && (v.requires || []).includes(o.id));
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -418,12 +416,13 @@ function deselect(id) {
   }
 }
 
-/* voices need what they require (voice-map) ticked first; everything is staged until PATCH IT */
-const voiceReady = (o) => (o.requires || []).every((r) => state.chosen.has(r));
-
+/* installing a voice ticks what it requires; everything is staged until PATCH IT (every
+ * build has the platform: voice-map, so voices can go in any slot) */
 function install(id) {
   if (state.voices.includes(id) || state.voices.length >= MAX_VOICES) return;
   state.voices.push(id);
+  const o = state.options.find((x) => x.id === id);
+  for (const r of (o && o.requires) || []) select(r);
 }
 
 function uninstall(id) {
@@ -450,9 +449,11 @@ function withRequires(ids) {
   return out;
 }
 
-/* bytes per area for these options together: owners shared between options count once */
+/* bytes per area for these options together on the platform (in every build): owners
+ * shared between options count once */
 function ramUsed(ids) {
   const m = state.memory, owners = {};
+  for (const [a, own] of Object.entries(m.platform || {})) owners[a] = { ...own };
   for (const id of ids) {
     for (const [a, own] of Object.entries(m.options[id] || {})) Object.assign(owners[a] = owners[a] || {}, own);
   }
@@ -671,7 +672,7 @@ function renderMods() {
   if (!state.options.length) {
     ul.append(pix("li", "dim", state.ticked.size ? "NO MODS IN THE TICKED REPOS." : "GO BACK AND TICK A REPO."));
   }
-  for (const o of state.options.filter((x) => !isVoice(x) && !isEngineHost(x))) ul.append(optionItem(o, o.title));
+  for (const o of state.options.filter((x) => !isVoice(x))) ul.append(optionItem(o, o.title));
   ul.querySelectorAll(".pix").forEach(pixRender);
   renderVoices();
   renderMem();
@@ -737,18 +738,12 @@ function voiceButton(o, label, onClick, ok, note) {
   return li;
 }
 
-/* ENGINES: [ ] ENABLE CUSTOM VOICE ENGINES, then INSTALLED in slot order from 5 and AVAILABLE
- * to its right; clicking moves a voice */
+/* ENGINES: INSTALLED in slot order from 5 and AVAILABLE to its right; clicking moves a voice */
 function renderVoices() {
-  const host = $("enginehost"), inst = $("installed"), avail = $("available");
-  host.textContent = "";
+  const inst = $("installed"), avail = $("available");
   inst.textContent = "";
   avail.textContent = "";
-  for (const o of state.options.filter(isEngineHost)) host.append(optionItem(o, "ENABLE CUSTOM VOICE ENGINES"));
   const voices = state.options.filter(isVoice);
-  const ready = voices.every(voiceReady);
-  document.querySelector("#voices .vcols").hidden = !ready;
-  $("slotnote").hidden = !ready;
   state.voices.forEach((id, n) => {
     const o = voices.find((x) => x.id === id);
     if (o) inst.append(voiceButton(o, `${FIRST_VOICE_SLOT + n}. ${o.title}`, () => uninstall(id), true));
@@ -766,7 +761,7 @@ function renderVoices() {
     avail.append(voiceButton(o, o.title, () => install(o.id), usable(o) && !gone.length && !over && !merr && !full, note));
   }
   if (!voices.length) avail.append(pix("li", "dim", "NO VOICES FOUND."));
-  for (const el of [host, inst, avail]) el.querySelectorAll(".pix").forEach(pixRender);
+  for (const el of [inst, avail]) el.querySelectorAll(".pix").forEach(pixRender);
 }
 
 function showTab(tab) {
@@ -782,7 +777,7 @@ function updatePatch() {
   lock("s1", !ready || state.building);
   if (ready && !state.building) unlockRepos();
   lock("s2", !ready);
-  $("patch").disabled = !ready || !picked().length || state.building;
+  $("patch").disabled = !ready || state.building;     // nothing picked: the platform alone
   if (ready) renderMods();
   pixAll();
 }

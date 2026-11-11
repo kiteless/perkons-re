@@ -1,5 +1,5 @@
 """Mod Matrix: catalogue (mod.json options, image checks) and the local server's API.
-The build test needs arm-none-eabi-gcc only if a mod has C code (this one doesn't)."""
+The builds need arm-none-eabi-gcc: every build has the platform (voice-map)."""
 import json
 import os
 import shutil
@@ -89,8 +89,7 @@ class TestModMatrix(unittest.TestCase):
         self.assertEqual((opts['tag']['target'], opts['any']['target']), ('1.3.0', None))
 
     def test_selection_rules(self):
-        with self.assertRaises(catalog.CatalogError):
-            catalog.check_selection([], '1.3.0')
+        self.assertEqual(catalog.check_selection([], '1.3.0'), ([], ['voice_map']), 'the platform alone')
         with self.assertRaises(catalog.CatalogError):
             catalog.check_selection(['tag'], '1.2.2')                  # wrong version
         with self.assertRaises(catalog.CatalogError):
@@ -99,11 +98,12 @@ class TestModMatrix(unittest.TestCase):
             catalog.check_selection(['needs'], '1.3.0')                # missing requirement
         catalog.check_selection(['needs', 'tag'], '1.3.0')
         _, specs = catalog.check_selection(['tag'], '1.3.0')
-        self.assertEqual(specs, ['tag_build'])
+        self.assertEqual(specs, ['voice_map', 'tag_build'], 'the platform first')
 
     def test_build_tag_fits_the_version_field(self):
         many = [{'id': f'o{i}', 'code': 'ab'} for i in range(8)]
         self.assertEqual(catalog.build_tag(many[:2]), 'mm-abab')
+        self.assertEqual(catalog.build_tag([]), 'mm-base')
         self.assertLessEqual(len(catalog.build_tag(many)), catalog.MAX_TAG)
 
     def test_inspect(self):
@@ -169,7 +169,10 @@ class TestModMatrix(unittest.TestCase):
         self.assertEqual(mem['takeovers'], {})
         self.assertEqual(mem['borrows'], {})
         self.assertEqual(mem['errors'], {})
-        self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), {'main': 0, 'voice': 0, 'store': 0})
+        self.assertEqual(mem['options']['tag'], {}, 'what it adds to the platform: nothing')
+        platform = {a: sum(own.values()) for a, own in mem['platform'].items()}
+        self.assertGreaterEqual(platform['voice'], 4 * 0x4000, 'voice-map\'s engine arenas')
+        self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), dict({'main': 0, 'voice': 0, 'store': 0}, **platform))
         code, _ = self.call('/api/memory/nope')
         self.assertEqual(code, 404)
 
@@ -202,7 +205,7 @@ class TestModMatrix(unittest.TestCase):
                 break
             time.sleep(0.2)
         self.assertEqual(mem['options'][f'{REMOTE}:remote-tag'], REMOTE_MEMORY['v1.3.0']['ram'])
-        self.assertEqual(catalog.ram_used([f'{REMOTE}:remote-tag'], mem)['main'], 64)
+        self.assertEqual(catalog.ram_used([f'{REMOTE}:remote-tag'], mem)['main'], 64 + sum(mem['platform']['main'].values()))
 
     def test_a_build_downloads_only_its_mods(self):
         code, info = self.call('/api/inspect', body=self.raw)

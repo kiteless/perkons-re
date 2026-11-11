@@ -18,7 +18,8 @@ API (JSON unless noted):
                                {state: measuring|done, areas: {main|voice|store: {start, size: the
                                 mods' part, block: {name, start, size, ranges: [{owner, start,
                                 size}]}: the physical block, stock's ranges and 'mods'}},
-                                options: {id: {area: {owner: bytes}}},
+                                platform: {area: {owner: bytes}}: in every build,
+                                options: {id: {area: {owner: bytes}}}: what each adds to it,
                                 takeovers: {id: {area: {stock range: owner}}},
                                 borrows: {id: {area: {firmware buffer: [owners]}}}, errors: {id: text}}
   POST /api/build              {image, options: [mod ids], voices: [voice ids, slot order],
@@ -53,7 +54,7 @@ from perkons.emu import Symbols  # noqa: E402
 from perkons.mods import mod_dirs  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
-MEMORY_FORMAT = 3          # the shape of a measurement (/api/memory): part of its cache key
+MEMORY_FORMAT = 4          # the shape of a measurement (/api/memory): part of its cache key
 MAX_IMAGE = 16 * 1024 * 1024
 
 
@@ -192,9 +193,9 @@ class App:
         return [o for o in self.offered if not o.get('repo') or ticked is None or o['repo'].lower() in ticked]
 
     def measure(self, image_id):
-        """Build every option on disk alone (with what it requires, no image written) and
-        record the RAM it takes, for the MAIN / VOICE / STORE meters; a downloadable mod's
-        comes from its repo's manifest (memory_for). Kept in .cache/memory/ by a hash of the
+        """Build the platform alone, and every option on disk on it (with what it requires,
+        no image written), and record the RAM each takes, for the MAIN / VOICE / STORE
+        meters; a downloadable mod's comes from its repo's manifest (memory_for). Kept in .cache/memory/ by a hash of the
         image and every build input, so a restart with nothing changed is instant."""
         img, _, info = self.images[image_id]
         cache = srchash.path('memory', srchash.key(info['sha256'], MEMORY_FORMAT), '.json')
@@ -213,14 +214,19 @@ class App:
                  for a, (lo, hi) in ram.areas(syms).items()}
         opts, takeovers, borrows, errors = {}, {}, {}, {}
         with self.build_lock:
+            try:
+                platform = catalog.measure(img, list(mods.PLATFORM), symbols, os.path.join(self.work, 'measure', '_platform'))
+            except BaseException as e:
+                self.memory[image_id] = {'state': 'error', 'error': f'the platform: {e}'}
+                return
             by_id = {o['id']: o for o in self.local}
             for o in by_id.values():
                 if o['target'] not in (None, info['version']):
                     continue
-                specs = list(dict.fromkeys(s for i in catalog.with_requires([o['id']], by_id)
-                                           for s in by_id[i]['patches']))
                 try:
-                    got = catalog.measure(img, specs, symbols, os.path.join(self.work, 'measure', o['id'].replace('/', '_')))
+                    got = catalog.beyond(catalog.measure(img, catalog.option_specs(o['id'], by_id), symbols,
+                                                         os.path.join(self.work, 'measure', o['id'].replace('/', '_'))),
+                                         platform)
                     opts[o['id']] = got['ram']
                     if got['takeovers']:
                         takeovers[o['id']] = got['takeovers']
@@ -228,7 +234,8 @@ class App:
                         borrows[o['id']] = got['borrows']
                 except BaseException as e:   # also sys.exit from a target mismatch
                     errors[o['id']] = str(e)
-        self.memory[image_id] = m = {'state': 'done', 'version': info['version'], 'areas': areas, 'options': opts,
+        self.memory[image_id] = m = {'state': 'done', 'version': info['version'], 'areas': areas,
+                                     'platform': platform['ram'], 'options': opts,
                                      'takeovers': takeovers, 'borrows': borrows, 'errors': errors}
         if not errors:
             with open(cache, 'w') as f:

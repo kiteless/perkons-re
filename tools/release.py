@@ -31,7 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 from build import build_image, regression  # noqa: E402
 from perkons.fwimage import Image  # noqa: E402
-from perkons.mods import mod_dirs  # noqa: E402
+from perkons.mods import mod_dirs, with_platform  # noqa: E402
 
 
 def sha256(path):
@@ -82,7 +82,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out = os.path.join(out_dir, rel['base_image'])
 
-    specs = list(rel['patches']) + [f'version_stamp:{rel["tag"]}']
+    specs = with_platform(rel['patches']) + [f'version_stamp:{rel["tag"]}']
     img, _ = build_image(base, out, specs, os.path.join(ROOT, 'symbols', f'{rel["base"]}-m7.json'),
                          build_dir=os.path.join(out_dir, 'obj'),
                          extra_kwargs={'version_stamp': {'banner': rel.get('banner')}})

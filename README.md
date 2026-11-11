@@ -82,10 +82,12 @@ Next time, just run step 3 again (in the `perkons-re` folder).
    **CONTINUE**; the browser's back button brings you back here to change them.
 3. On the **MODS** tab, tick the mods you want. Some need another mod; the page ticks it
    for you.
-4. To add voice engines, go to the **ENGINES** tab, tick **ENABLE CUSTOM VOICE ENGINES**
-   (the voice-map mod), then click voices in AVAILABLE to install them. They take voice slots 5, 6, … in the order you add them (slots
-   1–4 are the official voices); click one in TO BE INSTALLED to remove it. That order is the
-   engine page's columns on the unit, so keep it the same when you rebuild.
+4. To add voice engines, go to the **ENGINES** tab and click voices in AVAILABLE to install
+   them. They take voice slots 5, 6, … in the order you add them (slots 1–4 are the
+   official voices); click one in TO BE INSTALLED to remove it. That order is the engine
+   page's columns on the unit, so keep it the same when you rebuild. Every build has the
+   [voice map](docs/voice-map.md) (any engine on any voice, chosen per kit on the unit),
+   with or without other mods.
 5. Press **PATCH IT** and wait about a minute.
 6. Press **DOWNLOAD**. You get a new `perkons_v1.3.0-0-force.img`.
 
@@ -98,14 +100,14 @@ Next time, just run step 3 again (in the `perkons-re` folder).
    on. Let go when the first row of steps starts lighting; rows light 1 → 3 → 2 → 4, then
    the Pērkons starts.
 3. Check it worked: `INFO.TXT` on the card now shows a tag after the version, e.g.
-   `1.3.0 - mm-vmsl`. Plain `1.3.0 - gd5b5810` means the official firmware is still on it.
+   `1.3.0 - mm-rvzb`. Plain `1.3.0 - gd5b5810` means the official firmware is still on it.
 
 ### 6. Use the mods
 
-Each mod's page says how to use it:
-[voice-map](https://github.com/kiteless/perkons-re-mods/tree/main/voice-map),
+[The voice map](docs/voice-map.md) (in every build) chooses each voice's engine. Each mod's
+page says how to use it:
 [voice-zibens](https://github.com/kiteless/perkons-re-mods/tree/main/voice-zibens),
-[voice-akords](https://github.com/kiteless/perkons-re-mods/tree/main/voice-akords),
+[voice-akords](https://github.com/remixed123/perkons-re-mods/tree/main/voice-akords),
 [voice-step-sampler](https://github.com/kiteless/perkons-re-mods/tree/main/voice-step-sampler),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
@@ -139,9 +141,9 @@ build touches.
 | `tools/run_tests.py` | framework tests + mod tests |
 | `start_modmatrix.py` | one-step setup + start of the Mod Matrix (see [Get modded firmware](#get-modded-firmware)) |
 | `tools/modmatrix.py`, `ui/modmatrix/` | **Mod Matrix**: pick mods with checkboxes, build modded firmware from your own official image in the browser |
-| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas) |
+| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `voicemap` (the voice map: any engine on any voice), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
-| `patches/` | `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the STORE area stays untouched) |
+| `patches/` | `voice_map` (the platform, in every build: [docs/voice-map.md](docs/voice-map.md)), `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the STORE area stays untouched) |
 | `symbols/` | per-version functions, globals, struct offsets and named patch sites; the only place addresses live (read by the emulator, C builds, patches and Ghidra) |
 | `ghidra/` | headless import + analysis, decompile, and "who references X" query scripts |
 | `docs/porting.md` | moving mods to a new official firmware: symbol porter, probes, checks, rehearsal results |
@@ -204,8 +206,9 @@ patches in either place. See `tools/perkons/mods.py`.
 `python3 start_modmatrix.py` (or `make ui`, `UI_ARGS=--no-intro` to skip the start screen's animation) runs
 `tools/modmatrix.py`: a Python standard-library server on 127.0.0.1 and a plain
 HTML/JS page in `ui/modmatrix/`. It reads only the image's header (version), CRCs and
-hash (`symbols/official-images.json`), builds with `tools/build.py`, stamps the build with
-`version_stamp` (`mm-<codes>`), and serves the result for download. Options: `--port N`,
+hash (`symbols/official-images.json`), builds with `tools/build.py` (the platform, the voice
+map, always; the ticked mods on it), stamps the build with `version_stamp` (`mm-<codes>`,
+`mm-base` for the platform alone), and serves the result for download. Options: `--port N`,
 `--no-browser`, `--no-intro`.
 
 Mods come from **mod repos** on GitHub (`tools/perkons/repos.py`): the list is
@@ -220,7 +223,7 @@ The **MEMORY** pane has a meter for each of the three RAM blocks mods use: **MAI
 M4's D2 SRAM, 288 KB), **VOICE** (the M7's DTCM, 128 KB) and **STORE** (the AXI SRAM,
 512 KB). Each meter is the whole block in address order, with the firmware's own parts
 shown grey; the mods' part of each (64 KB, 76 KB and 111 KB) fills green as mods are
-ticked, and FREE is what's left of it. A mod that takes over one of the firmware's own
+ticked (in VOICE, the voice map's engine arenas from the start), and FREE is what's left of it. A mod that takes over one of the firmware's own
 parts (STEP SAMPLER: the stock custom-sample memory) shows it green instead. The meters
 follow the ticks, and a mod that wouldn't fit can't be ticked; the build itself checks
 again, exactly (`tools/perkons/ram.py`).

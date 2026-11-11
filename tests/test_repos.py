@@ -28,12 +28,12 @@ class TestRepos(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix='pk-repos-')
         self.gh = FakeGitHub(
             {'repos': [{'repo': BASE, 'default': True, 'note': 'Read me.'}, {'repo': EXTRA}, {'repo': BASE.upper()}]},
-            {BASE: {'perkons-mods.json': manifest(BASE, [mod('voice-map', 'voice-map')]),
+            {BASE: {'perkons-mods.json': manifest(BASE, [mod('voice-map', 'voice-map'), mod('shared', 'shared')]),
                     'perkons-repo.json': {'repo': BASE}, 'README.md': 'base',
-                    'voice-map/mod.json': '{}', 'voice-map/patches/voice_map.py': '#',
+                    'shared/mod.json': '{}', 'shared/patches/shared.py': '#',
                     'fx-reverb/patches/fx_reverb.py': '#'},
              EXTRA: {'perkons-mods.json': manifest(EXTRA, [
-                 mod('engine', 'engine', kind='voice', requires=[f'{BASE}:voice-map', 'helper'],
+                 mod('engine', 'engine', kind='voice', requires=[f'{BASE}:voice-map', f'{BASE}:shared', 'helper'],
                      readme='engine/README.md'),
                  mod('helper', 'helper')])}})
         self.restore = self.gh.install(os.path.join(self.tmp, 'cache'))
@@ -73,43 +73,46 @@ class TestRepos(unittest.TestCase):
         opts = {o['id']: o for o in repos.options(repos.manifest(EXTRA))}
         self.assertEqual(set(opts), {f'{EXTRA}:engine', f'{EXTRA}:helper'})
         e = opts[f'{EXTRA}:engine']
-        self.assertEqual(e['requires'], [f'{BASE}:voice-map', f'{EXTRA}:helper'])
+        self.assertEqual(e['requires'], [f'{BASE}:shared', f'{EXTRA}:helper'], 'voice-map: the platform')
         self.assertEqual((e['author'], e['readme']), ('someone', f'https://github.com/{EXTRA}/blob/main/engine/README.md'))
+
+    def test_a_repo_doesnt_offer_what_is_now_the_platform(self):
+        self.assertEqual([o['id'] for o in repos.options(repos.manifest(BASE))], [f'{BASE}:shared'])
 
     def test_selection_across_repos(self):
         offered = repos.options(repos.manifest(BASE)) + repos.options(repos.manifest(EXTRA))
         with self.assertRaisesRegex(catalog.CatalogError, 'needs'):
             catalog.check_selection([f'{EXTRA}:helper'], '1.3.0', voices=[f'{EXTRA}:engine'], offered=offered)
-        chosen, specs = catalog.check_selection([f'{BASE}:voice-map', f'{EXTRA}:helper'], '1.3.0',
+        chosen, specs = catalog.check_selection([f'{BASE}:shared', f'{EXTRA}:helper'], '1.3.0',
                                                 voices=[f'{EXTRA}:engine'], offered=offered)
-        self.assertEqual(specs, ['voice_map', 'helper', 'engine:5'])
+        self.assertEqual(specs, ['voice_map', 'shared', 'helper', 'engine:5'], 'the platform first')
 
     def test_one_patch_name_from_two_repos_is_refused(self):
-        twin = repos.options(manifest('other/fork', [mod('voice-map', 'voice-map')]))
+        twin = repos.options(manifest('other/fork', [mod('shared', 'shared')]))
         with self.assertRaisesRegex(catalog.CatalogError, 'two repos'):
-            catalog.check_selection([f'{BASE}:voice-map', 'other/fork:voice-map'], '1.3.0',
+            catalog.check_selection([f'{BASE}:shared', 'other/fork:shared'], '1.3.0',
                                     offered=repos.options(repos.manifest(BASE)) + twin)
 
     def test_download_fetches_only_the_dirs_asked_for(self):
-        root = repos.download(BASE, 'main', ['voice-map'])
-        self.assertTrue(os.path.exists(os.path.join(root, 'voice-map', 'patches', 'voice_map.py')))
+        root = repos.download(BASE, 'main', ['shared'])
+        self.assertTrue(os.path.exists(os.path.join(root, 'shared', 'patches', 'shared.py')))
         self.assertTrue(os.path.exists(os.path.join(root, 'perkons-repo.json')), 'the root files too')
         self.assertFalse(os.path.exists(os.path.join(root, 'fx-reverb')))
         self.assertFalse(self.gh.fetched(BASE, 'fx-reverb/'))
         n = len(self.gh.log)
-        self.assertEqual(repos.download(BASE, 'main', ['voice-map']), root)
+        self.assertEqual(repos.download(BASE, 'main', ['shared']), root)
         self.assertEqual([u for u in self.gh.log[n:] if 'raw.githubusercontent' in u], [], 'kept: not fetched again')
-        self.assertEqual(repos.repo_root(os.path.join(root, 'voice-map')), (root, BASE))
+        self.assertEqual(repos.repo_root(os.path.join(root, 'shared')), (root, BASE))
 
     def test_download_refuses_paths_outside_the_repo(self):
-        self.gh.trees[BASE]['voice-map/../../escape'] = b'x'
+        self.gh.trees[BASE]['shared/../../escape'] = b'x'
         with self.assertRaisesRegex(repos.RepoError, 'bad path'):
-            repos.download(BASE, 'main', ['voice-map'])
+            repos.download(BASE, 'main', ['shared'])
 
     def test_ram_owners_are_named_by_repo(self):
-        root = repos.download(BASE, 'main', ['voice-map'])
-        src = os.path.relpath(os.path.join(root, 'voice-map', 'src', 'm7', 'voice_map.c'), catalog.ROOT)
-        self.assertEqual(catalog.canonical_owner(f'{src}:.bss.x'), f'{BASE}:voice-map/src/m7/voice_map.c:.bss.x')
+        root = repos.download(BASE, 'main', ['shared'])
+        src = os.path.relpath(os.path.join(root, 'shared', 'src', 'm7', 'shared.c'), catalog.ROOT)
+        self.assertEqual(catalog.canonical_owner(f'{src}:.bss.x'), f'{BASE}:shared/src/m7/shared.c:.bss.x')
         self.assertEqual(catalog.canonical_owner('src/m4/host/pk_host.c:.bss'), 'src/m4/host/pk_host.c:.bss')
         self.assertEqual(catalog.canonical_owner('voice_map'), 'voice_map')
 

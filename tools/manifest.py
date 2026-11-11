@@ -5,8 +5,8 @@
 
 REPO_DIR is a mod repo (perkons-repo.json at its root, its mods below: perkons.repos). The
 manifest lists every option of every mod in it, as its mod.json says, with its target and,
-per firmware version, the RAM it takes (MAIN, VOICE, STORE), measured by building
-it with what it requires: an official image for each supported version is needed (given
+per firmware version, the RAM it adds to the platform (MAIN, VOICE, STORE), measured by
+building it with what it requires: an official image for each supported version is needed (given
 with --image, or found in the framework's root or firmware/). Mods from other repos that
 these require must be on disk too (PERKONS_MODS). --check: don't write, exit 1 if the
 manifest on disk differs (it's out of date).
@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 from perkons import catalog, repos  # noqa: E402
 from perkons.fwimage import Image  # noqa: E402
-from perkons.mods import mod_dirs  # noqa: E402
+from perkons.mods import PLATFORM, mod_dirs  # noqa: E402
 
 
 def find_images(given):
@@ -57,6 +57,9 @@ def build(repo_dir, images):
     by_id = {o['id']: o for o in everything}
     ours = [o for o in everything if o.get('repo') == repo]
     work = tempfile.mkdtemp(prefix='pk-manifest-')
+    symbols = {v: os.path.join(ROOT, 'symbols', f'v{v}-m7.json') for v in images}
+    platform = {v: catalog.measure(Image.load(path), list(PLATFORM), symbols[v], os.path.join(work, '_platform', v))
+                for v, path in images.items()}
     mods = []
     for o in ours:
         prefix = repo + ':'
@@ -65,14 +68,12 @@ def build(repo_dir, images):
         for version, path in sorted(images.items()):
             if o['target'] not in (None, version):
                 continue
-            specs = list(dict.fromkeys(s for i in catalog.with_requires([o['id']], by_id)
-                                       for s in by_id[i]['patches']))
             for r in o['requires']:
                 if r not in by_id:
                     sys.exit(f'{o["id"]} requires {r}, which isn\'t on disk (PERKONS_MODS)')
-            got = catalog.measure(Image.load(path), specs, os.path.join(ROOT, 'symbols', f'v{version}-m7.json'),
+            got = catalog.measure(Image.load(path), catalog.option_specs(o['id'], by_id), symbols[version],
                                   os.path.join(work, o['id'].replace('/', '_').replace(':', '_'), version))
-            memory[f'v{version}'] = got
+            memory[f'v{version}'] = catalog.beyond(got, platform[version])
         entry = {'id': plain(o['id']), 'dir': o['dir'], 'title': o['title'], 'summary': o['summary']}
         if o['description']:
             entry['description'] = o['description']

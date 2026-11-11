@@ -20,6 +20,24 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXTRA = []              # more mod directories (a Mod Matrix build's downloaded mods)
 
+# The platform: patches in every build (the Mod Matrix's, `make build`, releases), so mods
+# can count on them. voice_map: any engine on any voice, and the extra engines voice mods add.
+PLATFORM = ('voice_map',)
+# option ids that were mods and are now the platform: a mod that requires one (any repo's)
+# has it already, and a repo that still offers one doesn't offer it
+FORMER_MODS = ('voice-map',)
+
+
+def in_platform(option_id):
+    """Whether an option id (plain or owner/name:id) names what's now the platform."""
+    return option_id.rpartition(':')[2] in FORMER_MODS
+
+
+def with_platform(specs):
+    """Patch specs with the platform's first (each once)."""
+    names = {s.partition(':')[0] for s in specs}
+    return [s for s in PLATFORM if s not in names] + list(specs)
+
 
 def mod_dirs():
     out = []

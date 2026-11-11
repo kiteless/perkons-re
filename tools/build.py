@@ -4,7 +4,8 @@
   build.py <base.img> <out.img> <patch> [<patch> ...] [--symbols symbols/v1.3.0-m7.json] [--no-emu]
 
 <patch> names a module in patches/ or in a mod's patches/ (see tools/perkons/mods.py),
-optionally with an argument: name:arg. After building, it:
+optionally with an argument: name:arg. The platform (mods.PLATFORM: voice_map) is always
+built in. After building, it:
   1. re-parses the output and checks CRCs
   2. boots the patched M7 through main()'s real wiring code in the emulator and reports
      which engine each output runs
@@ -22,7 +23,7 @@ sys.path.insert(0, ROOT)
 from perkons import verify  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 from perkons.fwimage import Image  # noqa: E402
-from perkons.mods import load_patch  # noqa: E402
+from perkons.mods import load_patch, with_platform  # noqa: E402
 from perkons.patch import Patcher  # noqa: E402
 
 
@@ -92,7 +93,7 @@ def main():
     a = ap.parse_args()
 
     base = Image.load(a.base)
-    chk, p = build_image(base, a.out, a.patches, a.symbols)
+    chk, p = build_image(base, a.out, with_platform(a.patches), a.symbols)
     if not a.no_emu:
         regression(base, chk, a.symbols, renders=m7_code(p))
 

@@ -21,6 +21,8 @@ A mod lists its options in <mod>/mod.json (mods without one are not offered):
       ]
     }
 
+Every build has the platform (mods.PLATFORM: voice-map) too; it isn't an option.
+
 The target version comes from the patch modules themselves (TARGET). A mod in a
 mod repo (perkons.repos: a perkons-repo.json above it) has the full id owner/name:id.
 """
@@ -30,7 +32,7 @@ import os
 
 from . import repos
 from .fwimage import Image
-from .mods import ROOT, load_patch, mod_dirs
+from .mods import ROOT, in_platform, load_patch, mod_dirs, with_platform
 
 MAX_TAG = 11
 
@@ -53,6 +55,8 @@ def options(dirs=None):
         q = (lambda i: repos.qualify(repo, i)) if repo else (lambda i: i)
         for o in spec.get('options', []):
             oid = q(o['id'])
+            if in_platform(oid):
+                continue
             if oid in seen:
                 raise CatalogError(f'option id {oid!r} used twice ({path})')
             seen.add(oid)
@@ -71,7 +75,7 @@ def options(dirs=None):
                         'readme_path': readme,
                         'patches': list(o['patches']), 'code': o['code'],
                         'conflicts': [q(c) for c in o.get('conflicts', [])],
-                        'requires': [q(r) for r in o.get('requires', [])],
+                        'requires': [q(r) for r in o.get('requires', []) if not in_platform(r)],
                         'kind': o.get('kind', 'mod'), 'mod': os.path.basename(d), 'dir': rel,
                         'repo': repo, 'ref': 'main', 'author': o.get('author', repo.split('/')[0] if repo else None),   # "": none shown
                         'local': root if repo else d,
@@ -115,8 +119,8 @@ MAX_VOICE_SLOT = 16
 def check_selection(ids, version, voices=(), offered=None):
     """The chosen options, validated for this base version. ids: mods (and voices, in any
     order); voices: the installed voices in slot order, from FIRST_VOICE_SLOT; offered: the
-    options to choose from (else options()). Returns (options, patch specs); a voice's
-    patch gets its slot as its argument."""
+    options to choose from (else options()). Returns (options, patch specs: the platform's
+    first); a voice's patch gets its slot as its argument. No options: the platform alone."""
     by_id = {o['id']: o for o in (options() if offered is None else offered)}
     voices = list(voices)
     if len(set(voices)) != len(voices):
@@ -132,8 +136,6 @@ def check_selection(ids, version, voices=(), offered=None):
         if (o['kind'] == 'voice') != (i in voices):
             raise CatalogError(f'{o["title"]}: voices are installed in a slot, mods ticked')
         chosen.append(o)
-    if not chosen:
-        raise CatalogError('choose at least one mod')
     for o in chosen:
         if o['target'] not in (None, version):
             raise CatalogError(f'{o["title"]} needs firmware {o["target"]}, this is {version}')
@@ -153,21 +155,23 @@ def check_selection(ids, version, voices=(), offered=None):
     slot = {i: FIRST_VOICE_SLOT + n for n, i in enumerate(voices)}
     specs = list(dict.fromkeys(f'{p}:{slot[o["id"]]}' if o['id'] in slot else p
                                for o in chosen for p in o['patches']))   # a shared patch once
-    return chosen, specs
+    return chosen, with_platform(specs)
 
 
 def build_tag(chosen):
-    """Short tag for INFO.TXT, e.g. mm-vmrvfz; falls back to a hash if too long."""
-    tag = 'mm-' + ''.join(o['code'] for o in chosen)
+    """Short tag for INFO.TXT, e.g. mm-rvfzzb (mm-base: the platform alone); falls back to
+    a hash if too long."""
+    tag = 'mm-' + (''.join(o['code'] for o in chosen) or 'base')
     if len(tag) > MAX_TAG:
         tag = 'mm-' + hashlib.sha1('+'.join(o['id'] for o in chosen).encode()).hexdigest()[:MAX_TAG - 3]
     return tag
 
 
 # -- RAM (MAIN / VOICE / STORE, see ram.py) ----------------------------------------------
-# The Mod Matrix measures each option by building it alone (with what it requires) and
-# keeps {option: {area: {owner: bytes}}}; a combination takes the union of the owners, so
-# RAM two options share (the FX buffer) counts once. The real build checks it exactly.
+# The Mod Matrix measures the platform alone, and each option on it (with what it requires),
+# and keeps {option: {area: {owner: bytes}}}: what the option adds to the platform. A
+# combination takes the union of the owners, so RAM two options share (the FX buffer)
+# counts once. The real build checks it exactly.
 
 def with_requires(ids, by_id=None):
     """ids plus everything they require, transitively (in a stable order)."""
@@ -186,8 +190,9 @@ def with_requires(ids, by_id=None):
 
 
 def ram_used(ids, memory):
-    """{area: bytes} for these options together, from a measurement (App.measure)."""
-    owners = {}
+    """{area: bytes} for these options together on the platform, from a measurement
+    (App.measure)."""
+    owners = {a: dict(own) for a, own in memory.get('platform', {}).items()}
     for i in ids:
         for area, own in memory['options'].get(i, {}).items():
             owners.setdefault(area, {}).update(own)
@@ -212,6 +217,21 @@ def canonical_owner(owner):
     if not repo:
         return owner
     return f'{repo}:{os.path.relpath(os.path.join(ROOT, path), root).replace(os.sep, "/")}:{section}'
+
+
+def option_specs(oid, by_id):
+    """The patch specs that build option oid alone: the platform, it and what it requires."""
+    return with_platform(list(dict.fromkeys(s for i in with_requires([oid], by_id) for s in by_id[i]['patches'])))
+
+
+def beyond(got, base):
+    """A measurement (measure()) less what `base` (the platform's) has: what the option adds."""
+    def less(d, b, keep):
+        out = {a: {k: keep(v, b.get(a, {}).get(k)) for k, v in own.items()} for a, own in d.items()}
+        return {a: {k: v for k, v in own.items() if v} for a, own in out.items() if any(own.values())}
+    return {'ram': less(got['ram'], base['ram'], lambda v, b: None if b is not None else v),
+            'takeovers': less(got['takeovers'], base['takeovers'], lambda v, b: None if b == v else v),
+            'borrows': less(got['borrows'], base['borrows'], lambda v, b: [o for o in v if o not in (b or [])])}
 
 
 def measure(img, specs, symbols, work):

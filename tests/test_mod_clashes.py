@@ -9,7 +9,7 @@ from fixtures import SYMBOLS_V130, require_image
 from perkons import catalog
 from perkons.emu import Symbols
 from perkons.fwimage import Image
-from perkons.mods import load_patch, mod_dirs, symbol_overlays
+from perkons.mods import PLATFORM, load_patch, mod_dirs, symbol_overlays
 from perkons.patch import Patcher
 
 
@@ -37,11 +37,14 @@ class TestModClashes(unittest.TestCase):
                             self.assertIn(s['call'], sym.fn)
 
     def test_every_option_registers_together(self):
-        """apply() of every option's patches into one patcher: the hosts raise on clashes."""
+        """apply() of the platform and every option's patches into one patcher: the hosts
+        raise on clashes."""
         stock = Image.load(require_image('v1.3.0'))
         p = Patcher(stock)
         p.symbols = {'m7': Symbols(SYMBOLS_V130), 'm4': Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))}
         p.build_dir = None
+        for name in PLATFORM:
+            load_patch(name).apply(p)
         for o in catalog.options():
             if o['conflicts']:
                 continue                               # can't be in the same build anyway

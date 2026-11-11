@@ -30,7 +30,7 @@ import re
 import threading
 import urllib.request
 
-from .mods import ROOT
+from .mods import ROOT, in_platform
 
 HOME = 'kiteless/perkons-re-mods'      # the main mod repo: listed first, and holds the repo list
 CONFIG_URL = f'https://raw.githubusercontent.com/{HOME}/main/repos.json'
@@ -122,13 +122,15 @@ def options(m, ref='main', local=None):
     repo = m['repo']
     out = []
     for o in m.get('mods', []):
+        if in_platform(o['id']):
+            continue
         readme = o.get('readme')
         out.append({'id': qualify(repo, o['id']), 'title': o['title'], 'summary': o['summary'],
                     'description': o.get('description', ''),
                     'readme': f'https://github.com/{repo}/blob/{ref}/{readme}' if readme else None,
                     'patches': list(o['patches']), 'code': o['code'],
                     'conflicts': [qualify(repo, c) for c in o.get('conflicts', [])],
-                    'requires': [qualify(repo, r) for r in o.get('requires', [])],
+                    'requires': [qualify(repo, r) for r in o.get('requires', []) if not in_platform(r)],
                     'kind': o.get('kind', 'mod'), 'dir': o['dir'], 'mod': o['dir'],
                     'repo': repo, 'ref': ref, 'author': o.get('author', repo.split('/')[0]), 'local': local,
                     'target': o.get('target'),
