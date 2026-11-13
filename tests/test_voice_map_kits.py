@@ -8,6 +8,7 @@ import unittest
 
 from fixtures import build_patched, require_image
 from perkons.fwimage import Image
+from perkons.mods import load_patch
 from perkons.rig import M4Rig
 
 SHIFT, KIT, MOD, TRIG1 = 0x47, 0x41, 0x43, 0x4b
@@ -19,6 +20,10 @@ _images = {}
 
 def image(patches):
     if patches not in _images:
+        try:
+            load_patch('voice_zibens')
+        except ImportError:
+            raise unittest.SkipTest('an extra engine to choose: voice-zibens (perkons-re-mods, PERKONS_MODS)')
         img, p = build_patched(Image.load(require_image('v1.3.0')), list(patches), tempfile.mkdtemp())
         _images[patches] = (img, p.cave_symbols['m4host'])
     return _images[patches]

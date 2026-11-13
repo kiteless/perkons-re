@@ -168,9 +168,10 @@ def save_map(p, img):
             continue                            # unchanged: a stock segment has no map
         path = _map_path(seg.data)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path + '.tmp', 'w') as f:
+        tmp = f'{path}.{os.getpid()}.tmp'       # parallel test processes may build the same image
+        with open(tmp, 'w') as f:
             f.write(text)
-        os.replace(path + '.tmp', path)
+        os.replace(tmp, path)
 
 
 def load_map(seg_bytes):

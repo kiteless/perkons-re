@@ -68,8 +68,9 @@ def build_patched(stock, names, build_dir):
         mod.apply(p, arg) if arg else mod.apply(p)
     img = p.result()
     for path, write in ((img_path, img.save), (sym_path, lambda t: _dump(getattr(p, 'cave_symbols', {}), t))):
-        write(path + '.tmp')
-        os.replace(path + '.tmp', path)             # whole files only: tests run in parallel
+        tmp = f'{path}.{os.getpid()}.tmp'
+        write(tmp)
+        os.replace(tmp, path)                       # whole files only: tests run in parallel
     return img, p
 
 
