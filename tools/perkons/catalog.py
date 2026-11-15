@@ -15,8 +15,10 @@ A mod lists its options in <mod>/mod.json (mods without one are not offered):
           "patches": ["fx_reverb"],          patch specs, as for `make build`
           "code": "rv",                      2 letters for the build tag (INFO.TXT)
           "conflicts": [],                   option ids that can't be combined (optional)
-          "requires": []                     option ids it needs in the same build (optional;
+          "requires": [],                    option ids it needs in the same build (optional;
                                              another repo's as owner/name:id)
+          "controls": [...]                  the button and knob combinations it uses
+                                             (optional for now; see perkons.controls)
         }
       ]
     }
@@ -30,7 +32,7 @@ import hashlib
 import json
 import os
 
-from . import repos
+from . import controls, repos
 from .fwimage import Image
 from .mods import ROOT, in_platform, load_patch, mod_dirs, with_platform
 
@@ -76,11 +78,19 @@ def options(dirs=None):
                         'patches': list(o['patches']), 'code': o['code'],
                         'conflicts': [q(c) for c in o.get('conflicts', [])],
                         'requires': [q(r) for r in o.get('requires', []) if not in_platform(r)],
+                        'controls': _controls(o.get('controls'), f'{path}: {o["id"]}'),
                         'kind': o.get('kind', 'mod'), 'mod': os.path.basename(d), 'dir': rel,
                         'repo': repo, 'ref': 'main', 'author': o.get('author', repo.split('/')[0] if repo else None),   # "": none shown
                         'local': root if repo else d,
                         'target': targets.pop()[1:] if targets else None})
     return out
+
+
+def _controls(c, where):
+    try:
+        return controls.validate(c, where)
+    except controls.ControlsError as e:
+        raise CatalogError(str(e))
 
 
 def official_images():
@@ -145,6 +155,9 @@ def check_selection(ids, version, voices=(), offered=None):
         missing = set(o['requires']) - set(ids)
         if missing:
             raise CatalogError(f'{o["title"]} needs {", ".join(sorted(missing))} too')
+    clash = controls.check_clashes(chosen)
+    if clash:
+        raise CatalogError(f'{clash}: they can\'t be combined')
     owner = {}
     for o in chosen:                    # patch modules are found by name: one of each
         for p in o['patches']:

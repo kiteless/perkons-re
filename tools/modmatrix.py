@@ -12,7 +12,7 @@ emulator regression on the voices, and hands back perkons_v<version>-0-force.img
 API (JSON unless noted):
   GET  /api/status             toolchain check, supported versions, stale (the code or mods
                                changed on disk since this server started: restart it)
-  GET  /api/mods               options
+  GET  /api/mods               options, and the stock and platform controls (perkons.controls)
   POST /api/inspect            body: the .img bytes -> {image id, version, official, ...}
   GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
                                {state: measuring|done, areas: {main|voice|store: {start, size: the
@@ -49,7 +49,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.insert(0, ROOT)
 from build import build_image, m7_code, regression  # noqa: E402
-from perkons import catalog, cbuild, mods, ram, repos, srchash  # noqa: E402
+from perkons import catalog, cbuild, controls, mods, ram, repos, srchash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 from perkons.mods import mod_dirs  # noqa: E402
 
@@ -370,7 +370,8 @@ def make_handler(app):
             if path == '/api/mods':
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
                 ticked = [r for r in q.get('repos', [''])[0].split(',') if r] if 'repos' in q else None
-                return self.guarded(lambda: {'options': app.options(ticked)})
+                return self.guarded(lambda: {'options': app.options(ticked),
+                                             'controls': {'stock': controls.STOCK, 'platform': controls.PLATFORM}})
             if path.startswith('/api/memory/'):
                 mem = app.memory_for(path.rsplit('/', 1)[1])
                 if not mem:

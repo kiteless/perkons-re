@@ -22,7 +22,9 @@ OPTIONS = {'options': [
     {'id': 'any', 'title': 'STAMP', 'summary': 'Stamp only.', 'patches': ['version_stamp:x'], 'code': 'st',
      'conflicts': ['tag']},
     {'id': 'needs', 'title': 'NEEDS TAG', 'summary': 'Needs the tag option.', 'patches': ['tag_build'],
-     'code': 'nt', 'requires': ['tag']},
+     'code': 'nt', 'requires': ['tag'], 'controls': [{'combo': 'KIT + SYNC', 'does': 'something'}]},
+    {'id': 'same-keys', 'title': 'SAME KEYS', 'summary': 'KIT + SYNC too.', 'patches': ['tag_build'],
+     'code': 'sk', 'controls': [{'combo': 'SYNC + KIT (HOLD)', 'page': 'MAIN', 'does': 'something else'}]},
 ]}
 
 
@@ -34,6 +36,7 @@ MANIFEST = {'format': 1, 'repo': REMOTE, 'description': 'Extra mods by someone. 
             'mods': [{'id': 'remote-tag', 'dir': 'extra-mod', 'title': 'REMOTE TAG', 'summary': 'A tag, from afar.',
                       'description': 'Longer words.', 'readme': 'extra-mod/README.md', 'patches': ['tag_build'],
                       'code': 'rt', 'kind': 'mod', 'requires': [], 'conflicts': [], 'target': '1.3.0',
+                      'controls': [{'combo': 'SHIFT + KNOB', 'page': 'MAIN', 'does': 'one voice only'}],
                       'memory': REMOTE_MEMORY}]}
 GITHUB = FakeGitHub({'repos': [{'repo': REMOTE}, {'repo': 'gone/missing', 'default': True}]},
                     {REMOTE: {'perkons-repo.json': {'repo': REMOTE, 'description': 'x'},
@@ -97,6 +100,8 @@ class TestModMatrix(unittest.TestCase):
         with self.assertRaises(catalog.CatalogError):
             catalog.check_selection(['needs'], '1.3.0')                # missing requirement
         catalog.check_selection(['needs', 'tag'], '1.3.0')
+        with self.assertRaises(catalog.CatalogError):
+            catalog.check_selection(['needs', 'tag', 'same-keys'], '1.3.0')    # the same controls
         _, specs = catalog.check_selection(['tag'], '1.3.0')
         self.assertEqual(specs, ['voice_map', 'tag_build'], 'the platform first')
 
@@ -190,11 +195,16 @@ class TestModMatrix(unittest.TestCase):
     def test_mods_come_from_the_ticked_repos(self):
         before = len(GITHUB.log)
         ids = lambda q: {o['id'] for o in self.call('/api/mods' + q)[1]['options']}   # noqa: E731
-        self.assertEqual(ids('?repos='), {'tag', 'any', 'needs'}, 'mods outside any repo: always')
-        self.assertEqual(ids(f'?repos={REMOTE}'), {'tag', 'any', 'needs', f'{REMOTE}:remote-tag'})
+        self.assertEqual(ids('?repos='), {'tag', 'any', 'needs', 'same-keys'}, 'mods outside any repo: always')
+        self.assertEqual(ids(f'?repos={REMOTE}'), {'tag', 'any', 'needs', 'same-keys', f'{REMOTE}:remote-tag'})
         o = next(o for o in self.call(f'/api/mods?repos={REMOTE}')[1]['options'] if o['id'] == f'{REMOTE}:remote-tag')
         self.assertEqual((o['author'], o['title'], o['description']), ('someone', 'REMOTE TAG', 'Longer words.'))
         self.assertEqual(o['readme'], f'https://github.com/{REMOTE}/blob/main/extra-mod/README.md')
+        self.assertEqual(o['controls'], MANIFEST['mods'][0]['controls'])
+        j = self.call('/api/mods?repos=')[1]
+        self.assertIn('SHIFT + KNOB', [c['combo'] for c in j['controls']['stock']])
+        self.assertIn('KIT + MOD', [c['combo'] for c in j['controls']['platform']])
+        self.assertIsNone(next(o for o in j['options'] if o['id'] == 'tag')['controls'], 'not listed')
         self.assertFalse([u for u in GITHUB.log[before:] if 'extra-mod/' in u], 'nothing downloaded to list it')
 
     def test_a_remote_mods_memory_comes_from_its_manifest(self):

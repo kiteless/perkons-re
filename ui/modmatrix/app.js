@@ -326,7 +326,8 @@ function scroller() {
 /* ---- the three steps ---- */
 
 const state = { status: null, options: [], image: null, info: null, chosen: new Set(), building: false,
-  memory: null, hover: null, voices: [], tab: "mods", repos: [], ticked: new Set(), repoError: null };
+  memory: null, hover: null, voices: [], tab: "mods", repos: [], ticked: new Set(), repoError: null,
+  stock: [], platform: [] };
 
 const FIRST_VOICE_SLOT = 5, MAX_VOICES = 12;     // slots 1-4: the official voices
 const isVoice = (o) => o.kind === "voice";
@@ -371,14 +372,158 @@ function unoffered(o) {
 
 const repoOf = (id) => id.includes(":") ? id.split(":")[0] : id;
 
-/* FROM <its repo>, and its README beside it */
+/* FROM <its repo>, then [CONTROLS] and [README] beside it */
 function fromLine(o) {
-  if (!o.repo && !o.readme) return null;
   const div = document.createElement("div");
   div.className = "from";
   if (o.repo) div.append(pix("p", "by", `FROM ${o.repo.toUpperCase()}`, { nowrap: "1" }));
+  div.append(controlsLink(o));
   if (o.readme) div.append(infoLink(o));
   return div;
+}
+
+/* [CONTROLS]: a modal with the button and knob combinations the mod uses */
+function controlsLink(o) {
+  const b = document.createElement("button");
+  b.className = "info ctl";
+  b.append(pix("span", "", "[CONTROLS]", { nowrap: "1" }));
+  b.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const body = !o.controls ? [pix("p", "dim", "ITS AUTHOR HASN'T LISTED ITS CONTROLS YET.")]
+      : !o.controls.length ? [pix("p", "dim", "NO BUTTON OR KNOB COMBINATIONS: ONLY THE USUAL CONTROLS.")]
+      : o.controls.map((c) => controlItem(c, o));
+    modal(`${o.title}: CONTROLS`, body, false);
+  });
+  for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
+    b.addEventListener(ev, () => requestAnimationFrame(() => b.querySelectorAll(".pix").forEach(pixRender)));
+  }
+  return b;
+}
+
+/* ---- controls (tools/perkons/controls.py): the same combination is the same buttons, in
+ * any order and gestures aside, on overlapping pages (ANY overlaps every page) ---- */
+
+const ctlParts = (c) => c.combo.split("+").map((p) => p.replace(/\s*\(.*?\)\s*/g, " ").trim().toUpperCase());
+const ctlKey = (c) => [...new Set(ctlParts(c))].sort().join("+");
+const ctlPage = (c) => String(c.page || "ANY").trim().toUpperCase();
+const ctlSame = (a, b) => ctlKey(a) === ctlKey(b) &&
+  (ctlPage(a) === "ANY" || ctlPage(b) === "ANY" || ctlPage(a) === ctlPage(b));
+const counted = (o) => (o.controls || []).filter((c) => !c.adds);
+
+/* [{who, mine, theirs}] for each picked option (or the platform) using a combination o does */
+function ctlClashes(o) {
+  const out = [];
+  for (const c of counted(o)) {
+    for (const d of state.platform) if (ctlSame(c, d)) out.push({ who: null, mine: c, theirs: d });
+    for (const id of picked()) {
+      const x = state.options.find((y) => y.id === id);
+      if (!x || x.id === o.id) continue;
+      for (const d of counted(x)) if (ctlSame(c, d)) out.push({ who: x, mine: c, theirs: d });
+    }
+  }
+  return out;
+}
+
+/* [{mine, stock}]: the stock combinations o changes */
+function stockChanges(o) {
+  return counted(o).flatMap((c) => state.stock.filter((s) => ctlSame(c, s)).map((s) => ({ mine: c, stock: s })));
+}
+
+/* a control in a modal: the combination and where, then what it does */
+function controlItem(c, o, note) {
+  const div = document.createElement("div");
+  div.className = "ctlitem";
+  div.append(pix("p", "combo", `${c.combo.toUpperCase()}${ctlPage(c) === "ANY" ? "" : `  (${ctlPage(c)} PAGE)`}`),
+    pix("p", "does", c.does.toUpperCase() + (c.adds ? " (STOCK'S ACTION STILL HAPPENS)" : "")));
+  const changed = note === undefined && o ? stockChanges({ controls: [c] }).map((x) => x.stock) : [];
+  for (const s of changed) div.append(pix("p", "chg", `CHANGES STOCK: ${s.does}`));
+  if (note) div.append(pix("p", "chg", note));
+  return div;
+}
+
+/* a modal over everything: a title, its body, OK (and CANCEL if ask); resolves true on OK */
+function modal(title, body, ask) {
+  return new Promise((resolve) => {
+    const back = document.createElement("div");
+    back.className = "modal-back";
+    const box = document.createElement("div");
+    box.className = "modal";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    const h = pix("h2", "head", title.toUpperCase());
+    box.append(h, ...body);
+    const btns = document.createElement("div");
+    btns.className = "modal-btns";
+    const button = (text, value) => {
+      const b = document.createElement("button");
+      b.className = "go";
+      b.append(pix("span", "", text, { nowrap: "1" }));
+      b.addEventListener("click", () => done(value));
+      for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
+        b.addEventListener(ev, () => requestAnimationFrame(() => b.querySelectorAll(".pix").forEach(pixRender)));
+      }
+      btns.append(b);
+      return b;
+    };
+    const ok = button("OK", true);
+    if (ask) button("CANCEL", false);
+    box.append(btns);
+    back.append(box);
+    const prev = document.activeElement;
+    const onKey = (e) => {
+      if (e.key === "Escape") done(false);
+      if (e.key === "Tab") {                          // keep focus in the modal
+        const f = [...btns.querySelectorAll("button")];
+        const i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+      }
+    };
+    function done(value) {
+      removeEventListener("keydown", onKey, true);
+      back.remove();
+      if (prev && prev.focus) prev.focus();
+      resolve(ask ? value : true);
+    }
+    addEventListener("keydown", onKey, true);
+    document.body.append(back);
+    back.querySelectorAll(".pix").forEach(pixRender);
+    ok.focus();
+  });
+}
+
+/* before ticking or installing o: a clash with what's picked (OK: those go, o comes in),
+ * or with the platform (it can't); then the stock combinations it changes (OK: go on).
+ * Resolves true to go ahead. */
+async function controlsOk(o) {
+  const cl = ctlClashes(o);
+  const plat = cl.filter((x) => !x.who);
+  if (plat.length) {
+    await modal(`${o.title} CAN'T BE USED`, [pix("p", "", "IT USES CONTROLS THAT EVERY BUILD USES (THE VOICE MAP):"),
+      ...plat.map((x) => controlItem(x.mine, o, `EVERY BUILD: ${x.theirs.does}`))], false);
+    return false;
+  }
+  if (cl.length) {
+    const others = [...new Map(cl.map((x) => [x.who.id, x.who])).values()];
+    const names = others.map((x) => x.title).join(", ");
+    const yes = await modal("CONTROLS CLASH", [
+      pix("p", "", `${o.title} AND ${names} USE THE SAME CONTROLS:`),
+      ...cl.map((x) => controlItem(x.mine, o, `${x.who.title}: ${x.theirs.does.toUpperCase()}`)),
+      pix("p", "dim", `OK: TAKE OUT ${names} AND PUT IN ${o.title}. CANCEL: KEEP ${names}.`)], true);
+    if (!yes) return false;
+    for (const x of others) {
+      if (isVoice(x)) uninstall(x.id); else deselect(x.id);
+    }
+  }
+  const ch = stockChanges(o);
+  if (ch.length) {
+    return modal("CHANGES STOCK CONTROLS", [
+      pix("p", "", `${o.title} CHANGES WHAT THESE PERKONS CONTROLS DO:`),
+      ...ch.map((x) => controlItem(x.mine, o, `STOCK: ${x.stock.does}`)),
+      pix("p", "dim", `OK: PUT IN ${o.title}. CANCEL: LEAVE IT OUT.`)], true);
+  }
+  return true;
 }
 
 /* the mod's page (its README on GitHub), in a new tab */
@@ -388,7 +533,7 @@ function infoLink(o) {
   a.href = o.readme;
   a.target = "_blank";
   a.rel = "noopener";
-  a.append(pix("span", "", "README", { nowrap: "1" }));
+  a.append(pix("span", "", "[README]", { nowrap: "1" }));
   for (const ev of ["mouseenter", "mouseleave", "focus", "blur"]) {
     a.addEventListener(ev, () => requestAnimationFrame(() => a.querySelectorAll(".pix").forEach(pixRender)));
   }
@@ -658,7 +803,10 @@ function setContinue() {
 /* the options of the ticked repos; what was chosen from a repo no longer ticked goes */
 async function loadMods() {
   const q = [...state.ticked].map(encodeURIComponent).join(",");
-  state.options = (await api(`/api/mods?repos=${q}`)).options;
+  const r = await api(`/api/mods?repos=${q}`);
+  state.options = r.options;
+  state.stock = r.controls.stock;
+  state.platform = r.controls.platform;
   const offered = new Set(state.options.map((o) => o.id));
   for (const id of [...state.chosen]) if (!offered.has(id)) deselect(id);
   state.voices = state.voices.filter((id) => offered.has(id));
@@ -692,8 +840,13 @@ function optionItem(o, title) {
   box.className = "sr";
   box.checked = state.chosen.has(o.id);
   box.disabled = !ok || state.building;
-  box.addEventListener("change", () => {
-    if (box.checked) select(o.id); else deselect(o.id);
+  box.addEventListener("change", async () => {
+    if (box.checked) {
+      box.checked = false;                  // until the controls check says yes
+      if (await controlsOk(o)) select(o.id);
+    } else {
+      deselect(o.id);
+    }
     renderMods();
     updatePatch();
   });
@@ -722,19 +875,22 @@ function optionItem(o, title) {
   return li;
 }
 
+/* an engine's box: the button (click: install or take out), then FROM, [CONTROLS] and [README] */
 function voiceButton(o, label, onClick, ok, note) {
   const li = document.createElement("li");
+  const box = document.createElement("div");
+  box.className = "vbox";
   const b = document.createElement("button");
   b.className = "voice";
   b.disabled = !ok || state.building;
   b.append(pix("span", "name", label, { nowrap: "1" }), pix("p", "sum", o.summary.toUpperCase()));
   if (note) b.append(pix("p", "err", note));
-  b.addEventListener("click", () => { onClick(); renderMods(); updatePatch(); });
+  b.addEventListener("click", async () => { await onClick(); renderMods(); updatePatch(); });
   for (const ev of ["mouseenter", "focus"]) b.addEventListener(ev, () => { state.hover = o.id; renderMem(); });
   for (const ev of ["mouseleave", "blur"]) b.addEventListener(ev, () => { state.hover = null; renderMem(); });
-  li.append(b);
-  const from = fromLine(o);
-  if (from) li.append(from);
+  box.classList.toggle("off", !ok || state.building);
+  box.append(b, fromLine(o));
+  li.append(box);
   return li;
 }
 
@@ -758,7 +914,8 @@ function renderVoices() {
       : gone.length ? `NEEDS ${gone.map(repoOf).join(", ").toUpperCase()}: GO BACK AND TICK IT`
       : over ? `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`
       : merr ? `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}` : full ? "ALL SLOTS TAKEN" : null;
-    avail.append(voiceButton(o, o.title, () => install(o.id), usable(o) && !gone.length && !over && !merr && !full, note));
+    avail.append(voiceButton(o, o.title, async () => { if (await controlsOk(o)) install(o.id); },
+      usable(o) && !gone.length && !over && !merr && !full, note));
   }
   if (!voices.length) avail.append(pix("li", "dim", "NO VOICES FOUND."));
   for (const el of [inst, avail]) el.querySelectorAll(".pix").forEach(pixRender);

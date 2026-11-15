@@ -30,6 +30,7 @@ import re
 import threading
 import urllib.request
 
+from . import controls
 from .mods import ROOT, in_platform
 
 HOME = 'kiteless/perkons-re-mods'      # the main mod repo: listed first, and holds the repo list
@@ -131,11 +132,20 @@ def options(m, ref='main', local=None):
                     'patches': list(o['patches']), 'code': o['code'],
                     'conflicts': [qualify(repo, c) for c in o.get('conflicts', [])],
                     'requires': [qualify(repo, r) for r in o.get('requires', []) if not in_platform(r)],
+                    'controls': _controls(o.get('controls')),
                     'kind': o.get('kind', 'mod'), 'dir': o['dir'], 'mod': o['dir'],
                     'repo': repo, 'ref': ref, 'author': o.get('author', repo.split('/')[0]), 'local': local,
                     'target': o.get('target'),
                     'memory': o.get('memory', {})})
     return out
+
+
+def _controls(c):
+    """A manifest's controls list; one that doesn't check out counts as not given."""
+    try:
+        return controls.validate(c)
+    except controls.ControlsError:
+        return None
 
 
 # -- downloads: a build's mods, only those ------------------------------------------------

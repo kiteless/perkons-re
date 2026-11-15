@@ -83,7 +83,10 @@ def build(repo_dir, images):
             entry['author'] = o['author']
         entry.update({'patches': o['patches'], 'code': o['code'], 'kind': o['kind'],
                       'requires': [plain(r) for r in o['requires']], 'conflicts': [plain(c) for c in o['conflicts']],
-                      'target': o['target'], 'memory': memory})
+                      'target': o['target']})
+        if o['controls'] is not None:
+            entry['controls'] = o['controls']
+        entry['memory'] = memory
         mods.append(entry)
     return {'format': repos.MANIFEST_FORMAT, 'repo': repo, 'description': info.get('description', ''),
             'mods': mods}

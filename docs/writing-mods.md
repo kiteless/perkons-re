@@ -200,7 +200,7 @@ FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 32 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
 
-Config keys in use: **row 3 step 14 (key 45)** pattern-bpm, **step 15 (key 46)** fx-reverb,
+Config keys in use (list yours in the option's `controls` too, as `ROW r STEP s` on page CONFIG): **row 3 step 14 (key 45)** pattern-bpm, **step 15 (key 46)** fx-reverb,
 **step 16 (key 47)** fx-freeze.
 Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–13; row 4 steps 2–14.
 Clashing keys or setting names fail the build. Toggles are saved in `system/mods.json`,
@@ -310,7 +310,8 @@ write WAVs to `out/` (gitignored) to listen before hardware.
       "patches": ["my_mod"],
       "code": "mm",
       "conflicts": [],
-      "requires": []
+      "requires": [],
+      "controls": [{"combo": "KIT + SYNC", "does": "TURNS MY MOD ON OR OFF"}]
     }
   ]
 }
@@ -320,6 +321,12 @@ write WAVs to `out/` (gitignored) to listen before hardware.
 them along); one from another mod repo is written in full, `owner/name:id`. Optional: `description`, a longer text, and
 `readme`, the mod's page from the repo root (default: the mod's `README.md`), which the
 Mod Matrix links, and `author`, when it isn't the repo's owner (`""`: none given). Only list user-facing options; development patches stay out. `make ui` to check it appears.
+
+`controls` lists the button and knob combinations the mod uses, and what each does
+([controls.md](controls.md)): the Mod Matrix shows them under the mod's [CONTROLS] link,
+won't build two mods that use the same combination, and asks the user before ticking one
+that changes what a stock combination does. Optional for now, required later: give it,
+`[]` if the mod uses none.
 
 Give the mod a user-facing `README.md`: what it does, how to use it, and a "Getting it"
 section pointing to perkons-re's [Get modded firmware](../README.md#get-modded-firmware)
