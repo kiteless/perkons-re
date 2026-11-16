@@ -7,7 +7,7 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DPR = Math.max(1, Math.round(window.devicePixelRatio || 1));
 const SCROLL_TEXT = "PERKONS MOD MATRIX   BROUGHT TO YOU BY KITELESS   BIG UP GIRTS AND EVERYONE AT ERICA     " +
   "SUPPORT INDEPENDENT SYNTH MANUFACTURERS     PERKONS STRIKES THE OAK AND THE DEVILS RUN       " +
-  "KEEPING IT BROWN WATER IN 2026    SUP NOX!          ";
+  "KEEPING IT BROWN IN 2026!    SHOUT OUTS: REMIXED123, EVEN DRONES, NOX          ";
 const PALETTE = Object.values(C64);
 const $ = (id) => document.getElementById(id);
 
