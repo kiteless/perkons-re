@@ -111,7 +111,6 @@ page says how to use it:
 [voice-step-sampler](https://github.com/kiteless/perkons-re-mods/tree/main/voice-step-sampler),
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
-[eight-lanes](https://github.com/kiteless/perkons-re-mods/tree/main/eight-lanes),
 [per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo),
 [pattern-bpm](https://github.com/kiteless/perkons-re-mods/tree/main/pattern-bpm).
 

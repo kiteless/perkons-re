@@ -97,11 +97,11 @@ class TestCardBench(unittest.TestCase):
         self.assertIn('<=200: 1 >200: 0', txt)
 
     def test_hooks_are_first_in_their_chains(self):
-        """Built with a mod that also hooks the saves (eight-lanes, the host's sidecars), the
+        """Built with a mod that also hooks the saves (voice-step-sampler, the host's sidecars), the
         site's guard jumps to the bench first, so it times the whole chain."""
         import capstone
         from perkons.patch import thumb_bl_target
-        img, p = build_patched(Image.load(require_image('v1.3.0')), ['card_bench', 'eight_lanes'], self.tmp + '/el')
+        img, p = build_patched(Image.load(require_image('v1.3.0')), ['card_bench', 'voice_map', 'voice_step_sampler:5'], self.tmp + '/ss')
         s, seg = p.cave_symbols['m4host'], img.segment('m4')
         md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
         for site, want in (('patpage.call_save_a', 'pk_bench_pat_save'), ('kits.save.08105c84', 'pk_bench_kit_save')):

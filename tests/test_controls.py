@@ -61,7 +61,7 @@ class TestControls(unittest.TestCase):
             self.skipTest('no mods with controls on disk (PERKONS_MODS)')
         self.assertIsNone(check_clashes(opts))
         changes = {o['id'].split(':')[-1]: sorted(s['combo'] for _, s in stock_changes(o)) for o in opts}
-        for oid, want in (('eight-tracks', ['SHIFT + KNOB']), ('fx-freeze', ['FX SWITCH']),
+        for oid, want in (('fx-freeze', ['FX SWITCH']),
                           ('per-track-lfo', []), ('voice-step-sampler', [])):
             if oid in changes:
                 self.assertEqual(changes[oid], want, oid)
