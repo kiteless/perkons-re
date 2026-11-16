@@ -200,9 +200,9 @@ FX mods override weak hooks (`pk_fx_engine`, `pk_fx_delay`,
 `pk_fx_freeze_engaged`, `pk_fx_switch_is_freeze`, `pk_fx_reset`) and share the 32 KB
 `pk_fx_buf`. See `fx-reverb` and `fx-freeze` for a pair that builds alone or together.
 
-Config keys in use (list yours in the option's `controls` too, as `ROW r STEP s` on page CONFIG): **row 3 step 14 (key 45)** pattern-bpm, **step 15 (key 46)** fx-reverb,
+Config keys in use (list yours in the option's `controls` too, as `ROW r STEP s` on page CONFIG): **row 3 step 13 (key 44)** unquantized, **step 14 (key 45)** pattern-bpm, **step 15 (key 46)** fx-reverb,
 **step 16 (key 47)** fx-freeze.
-Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–13; row 4 steps 2–14.
+Free keys (v1.3.0): row 1 steps 4, 13; row 2 steps 14–16; row 3 steps 10–12; row 4 steps 2–14.
 Clashing keys or setting names fail the build. Toggles are saved in `system/mods.json`,
 never in the stock `device.json`: new settings go in new files, so deleting them gives
 stock behaviour.

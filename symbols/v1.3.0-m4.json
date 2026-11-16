@@ -81,6 +81,7 @@
     "seq_record": "0x08102fc0",
     "seq_clear_slot": "0x0810c564",
     "voice_play": "0x0810210c",
+    "seq_play_state": "0x0810da74",
     "trig_active": "0x08102134",
     "ui_update": "0x08103b98",
     "set_mode": "0x08104098",

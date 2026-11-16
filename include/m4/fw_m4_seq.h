@@ -75,9 +75,11 @@
 #define FW_VS_PENDING       0x08    /* block to move to at the track's loop end */
 #define FW_VS_STEP          0x1c
 #define FW_VS_NEXT          0x20
+#define FW_VS_TICK          0x24    /* u16: clock ticks into the step, 0 .. FW_CLK_STEP_TICKS - 1 */
 #define FW_VS_SUBTICK       0x26
 #define FW_VS_FIRED         0x31
 #define FW_VS_CLOCK         0x44    /* -> clock_state */
+#define FW_CLK_STEP_TICKS   0x1c    /* clock_state u16: ticks per step (24) at every track rate */
 #define FW_VS_LOCKS         0x4c    /* -> the block's lock records */
 #define FW_VS_VALUE         0x50    /* u16 x 11: the values playing now */
 #define FW_VS_BASE          0x6a    /* u16 x 11 + masks (26 B): knob/kit value of each slot */
@@ -100,7 +102,8 @@ static inline int fw_pattern_of(const void *hdr)
 
 /* track block (CONST_track_block bytes): 16 steps, settings, 16 lock records */
 #define FW_STEPS            16
-#define FW_STEP_SIZE        8       /* +0 on, +4 ratchet, +5 condition, +6 note, +7 velocity */
+#define FW_STEP_SIZE        8       /* +0 on, +2 delay, +4 ratchet, +5 condition, +6 note, +7 velocity */
+#define FW_STEP_DELAY       2       /* u16: plays this % of a step late (0-99); shuffle sets it */
 #define FW_BLK_FIRST        0x80
 #define FW_BLK_LAST         0x81
 #define FW_BLK_PLAY_MODE    0x82
@@ -109,6 +112,9 @@ static inline int fw_pattern_of(const void *hdr)
 #define FW_BLK_GROOVE       0x88
 #define FW_BLK_LOCKS        0x8c
 #define FW_LOCK_SIZE        0x1a    /* u16 x 11, u16 locked mask, u16 glide mask */
+
+/* ---- recording (SYM_rec_flags) ------------------------------------------------------ */
+#define FW_REC_ON           1       /* nonzero: REC is on (playing: the trigger keys record) */
 
 /* ---- modulation LFO object (SYM_mod_lfo) -------------------------------------------- */
 #define FW_LFO_SIZE         0x30

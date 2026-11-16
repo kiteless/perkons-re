@@ -112,7 +112,8 @@ page says how to use it:
 [fx-reverb](https://github.com/kiteless/perkons-re-mods/tree/main/fx-reverb),
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
 [per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo),
-[pattern-bpm](https://github.com/kiteless/perkons-re-mods/tree/main/pattern-bpm).
+[pattern-bpm](https://github.com/kiteless/perkons-re-mods/tree/main/pattern-bpm),
+[unquantized](https://github.com/kiteless/perkons-re-mods/tree/main/unquantized).
 
 ### Going back to the official firmware
 
