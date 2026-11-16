@@ -78,6 +78,7 @@
 #define FW_VS_TICK          0x24    /* u16: clock ticks into the step, 0 .. FW_CLK_STEP_TICKS - 1 */
 #define FW_VS_SUBTICK       0x26
 #define FW_VS_FIRED         0x31
+#define FW_VS_PLAY_NEXT     0x34    /* u8: whether the next step plays (decided ahead; 0 = it doesn't) */
 #define FW_VS_CLOCK         0x44    /* -> clock_state */
 #define FW_CLK_STEP_TICKS   0x1c    /* clock_state u16: ticks per step (24) at every track rate */
 #define FW_VS_LOCKS         0x4c    /* -> the block's lock records */
@@ -139,6 +140,7 @@ static inline int fw_pattern_of(const void *hdr)
 #define FW_DC_SEQ_OUT       0x19
 #define FW_DC_MULTI         0x1d    /* MIDI: 0 single channel, 1 multi */
 #define FW_DC_CH_SINGLE     0x22
+#define FW_DC_TRIG_NOTE     0x23    /* u8 x 4: single channel, the note that plays each voice */
 
 /* ---- calls ------------------------------------------------------------------------- */
 #define fw_key_held         FW_CALL(SYM_key_held, int (*)(int key))
