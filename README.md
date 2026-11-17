@@ -16,6 +16,8 @@ from the official update.
 
 ## Get modded firmware
 
+remixed123 has packaged this up as a [Mac/Windows/Linux installer](https://github.com/remixed123/modmatrix-desktop), with some extra utilities to predict processor load. If you just want a firmware to drop on your device, this is currently the easiest path. **Thanks mate!**
+
 You pick the mods you want in the **Mod Matrix**, a small app that runs in your browser,
 on your own computer. It patches the official firmware you downloaded from Erica Synths
 and gives you a new firmware file to flash. Nothing is uploaded anywhere.
