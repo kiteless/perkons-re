@@ -115,7 +115,7 @@ page says how to use it:
 [fx-freeze](https://github.com/kiteless/perkons-re-mods/tree/main/fx-freeze),
 [per-track-lfo](https://github.com/kiteless/perkons-re-mods/tree/main/per-track-lfo),
 [pattern-bpm](https://github.com/kiteless/perkons-re-mods/tree/main/pattern-bpm),
-[seq-unquantized](https://github.com/kiteless/perkons-re-mods/tree/main/seq-unquantized).
+[off-grid](https://github.com/kiteless/perkons-re-mods/tree/main/off-grid).
 
 ### Going back to the official firmware
 
