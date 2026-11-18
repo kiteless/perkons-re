@@ -1,5 +1,7 @@
 # perkons-re
 
+## Overview
+
 Reverse-engineering and modding framework for the **Erica Synths Pērkons HD-01** firmware:
 unpack/repack update images, analyse both cores in Ghidra, run the real firmware code in
 an emulator, and build patched firmware (byte patches or C code) with automatic
@@ -10,19 +12,17 @@ regression checks against stock.
 > to the official firmware).
 > No firmware binaries are distributed here: bring the official update files.
 
-**Just want modded firmware for your Pērkons?** Follow [Get modded firmware](#get-modded-firmware)
-below. No programming needed, and no firmware files come from here: you build your own
-from the official update.
+### I just want the firmware, ugh
+
+remixed123 has packaged this whole mess up as a [Mac/Windows/Linux installer](https://github.com/remixed123/modmatrix-desktop), with some extra utilities to predict processor load. If you're just looking to get some of these features on your device, this is currently the easiest path. If you go this way, you don't need to install all the xcode/git/etc. cruft below. **Thanks mate!**
 
 ## Get modded firmware
-
-remixed123 has packaged this up as a [Mac/Windows/Linux installer](https://github.com/remixed123/modmatrix-desktop), with some extra utilities to predict processor load. If you just want a firmware to drop on your device, this is currently the easiest path. If you go this way, you don't need to install all the xcode/git/etc. cruft below. **Thanks mate!**
 
 You pick the mods you want in the **Mod Matrix**, a small app that runs in your browser,
 on your own computer. It patches the official firmware you downloaded from Erica Synths
 and gives you a new firmware file to flash. Nothing is uploaded anywhere.
 
-![The Mod Matrix: load your official image, tick the mods, PATCH IT; the MEMORY pane shows how much room the chosen mods take](docs/img/modmatrix.jpg)
+![The Mod Matrix: load your official image, tick the mods, click patch it](docs/img/modmatrix.jpg)
 
 ### What you need
 
