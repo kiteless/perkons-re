@@ -166,7 +166,7 @@ def ram_placed(build_dir):
     with open(os.path.join(build_dir, 'cave.elf.map')) as f:
         text = f.read().partition('Linker script and memory map')[2]     # not the discarded sections before it
     out = {}
-    for name, addr, size, obj in re.findall(r'^ (\.(?:bss|pk_axi)\S*)\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S+\.o)$', text, re.M):
+    for name, addr, size, obj in re.findall(r'^ (\.(?:bss|pk_axi)\S*)\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(.+\.o)$', text, re.M):
         if int(size, 16):
             key = (objs.get(obj, obj), name)
             first, total = out.get(key, (int(addr, 16), 0))
