@@ -77,6 +77,9 @@
 #define FW_VS_NEXT          0x20
 #define FW_VS_TICK          0x24    /* u16: clock ticks into the step, 0 .. FW_CLK_STEP_TICKS - 1 */
 #define FW_VS_SUBTICK       0x26
+#define FW_VS_STEP_STATE    0x28    /* u8: 0 the step's time is ahead (a late step), 1 it came, 2 the next
+                                       step started early (FW_VS_STEP is already that step; FW_VS_TICK
+                                       still counts the step before) */
 #define FW_VS_FIRED         0x31
 #define FW_VS_PLAY_NEXT     0x34    /* u8: whether the next step plays (decided ahead; 0 = it doesn't) */
 #define FW_VS_CLOCK         0x44    /* -> clock_state */
@@ -104,7 +107,10 @@ static inline int fw_pattern_of(const void *hdr)
 /* track block (CONST_track_block bytes): 16 steps, settings, 16 lock records */
 #define FW_STEPS            16
 #define FW_STEP_SIZE        8       /* +0 on, +2 delay, +4 ratchet, +5 condition, +6 note, +7 velocity */
-#define FW_STEP_DELAY       2       /* u16: plays this % of a step late (0-99); shuffle sets it */
+#define FW_STEP_DELAY       2       /* s16: plays the step this % of a step off the grid (-99..99);
+                                       late if positive, early if negative (the player starts it during
+                                       the step before); delay * ticks per step / 100 ticks, truncated
+                                       towards 0. Shuffle sets 0..99 */
 #define FW_BLK_FIRST        0x80
 #define FW_BLK_LAST         0x81
 #define FW_BLK_PLAY_MODE    0x82
@@ -138,6 +144,7 @@ static inline int fw_pattern_of(const void *hdr)
 #define FW_DC_CLOCK_SRC     0x00    /* 0 internal, 1 analog, 2 MIDI */
 #define FW_DC_POT_CATCH     0x04
 #define FW_DC_SEQ_OUT       0x19
+#define FW_DC_VELOCITY      0x1b    /* MIDI velocity on (config: MIDI VELOCITY) */
 #define FW_DC_MULTI         0x1d    /* MIDI: 0 single channel, 1 multi */
 #define FW_DC_CH_SINGLE     0x22
 #define FW_DC_TRIG_NOTE     0x23    /* u8 x 4: single channel, the note that plays each voice */
@@ -145,7 +152,8 @@ static inline int fw_pattern_of(const void *hdr)
 /* ---- calls ------------------------------------------------------------------------- */
 #define fw_key_held         FW_CALL(SYM_key_held, int (*)(int key))
 #define fw_get_tick         FW_CALL(SYM_hal_get_tick, uint32_t (*)(void))   /* ms since boot */
-#define fw_steps_held       FW_CALL(SYM_steps_held, int (*)(void))
+#define fw_steps_held       FW_CALL(SYM_steps_held, int (*)(void))       /* how many steps are held */
+#define fw_seq_play_state   FW_CALL(SYM_seq_play_state, int (*)(void))  /* 1: playing */
 #define fw_set_mode         FW_CALL(SYM_set_mode, void (*)(int mode))
 #define fw_get_mode         FW_CALL(SYM_get_mode, int (*)(void))
 #define fw_pot_moved        FW_CALL(SYM_pot_moved, int (*)(int pot))
