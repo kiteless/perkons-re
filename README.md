@@ -2,25 +2,31 @@
 
 ## Overview
 
-Reverse-engineering and modding framework for the **Erica Synths Pērkons HD-01** firmware:
-unpack/repack update images, analyse both cores in Ghidra, run the real firmware code in
-an emulator, and build patched firmware (byte patches or C code) with automatic
-regression checks against stock.
+Reverse-engineering and modding framework and firmware builder for the **Erica Synths Pērkons HD-01**. For end-users, you can get a firmware with a bunch of new features, for developers, this package aims to be a package manager for Perkons mods, providing a base to analyze the hardware, build out out new features, and distribute them in a hopefully compatible way. The core features the firmware provides are:
 
-> Unofficial. Not affiliated with Erica Synths. Flashing modified firmware is at your
+- Engine selection for voices. Any voice can have any engine, selectable via KIT+MOD, including copies of engines running in parallel. Engines in use are stored with kits.
+- A framework to create new custom engines and more general mods, and a format for describing these to minimize memory and interface conflicts
+- An installer that allows you to select any subset of compatible mods, with memory usage tracking.
+
+A bunch of stuff has been built on this already. Some highlights are:
+
+- Multiple new synthesis engines, some even have patch management
+- A sample-based voice that can stream arbitrary-length samples from SD, 64 per bank, with sample slicing
+- Multiple LFOs, per voice or voice group
+- BPMs can be stored with patterns
+- Off-grid / unquantized recording 
+- BBD Delay can be swapped for a Clouds-like reverb, optionally with infinite freeze/hold
+
+> This is all unofficial and not affiliated with Erica Synths. Flashing modified firmware is at your
 > own risk; read [Get modded firmware](#get-modded-firmware) first (flashing and going back
 > to the official firmware).
 > No firmware binaries are distributed here: bring the official update files.
-
-### I just want the firmware, ugh
-
-remixed123 has packaged this whole mess up as a [Mac/Windows/Linux installer](https://github.com/remixed123/modmatrix-desktop), with some extra utilities to predict processor load. If you're just looking to get some of these features on your device, this is currently the easiest path. If you go this way, you don't need to install all the xcode/git/etc. cruft below. **Thanks mate!**
 
 ## Get modded firmware
 
 You pick the mods you want in the **Mod Matrix**, a small app that runs in your browser,
 on your own computer. It patches the official firmware you downloaded from Erica Synths
-and gives you a new firmware file to flash. Nothing is uploaded anywhere.
+and gives you a new firmware file to flash. It's all local.
 
 ![The Mod Matrix: load your official image, tick the mods, click patch it](docs/img/modmatrix.jpg)
 
@@ -31,7 +37,13 @@ and gives you a new firmware file to flash. Nothing is uploaded anywhere.
 * The Pērkons's SD card and a way to read it on your computer.
 * A Mac, Linux or Windows computer.
 
-### 1. Install three programs (once)
+### 0. Get the installer
+
+remixed123 has packaged this whole mess up as a [Mac/Windows/Linux installer](https://github.com/remixed123/modmatrix-desktop), with some extra utilities to predict processor load. If you're just looking to get some of these features on your device, this is currently the easiest path. If you go this way, you don't need to install all the xcode/git/etc. cruft below. **Thanks mate!**
+
+Click the above link, download the installer, run it, **then skip to step 4**. If you want to get into development or just like following instructions, you can follow steps 1-3 below. It's all the same patching code no matter which approach you take.
+
+### 1. Install three programs
 
 | | macOS | Linux (Debian/Ubuntu) | Windows |
 |---|---|---|---|
@@ -42,14 +54,14 @@ and gives you a new firmware file to flash. Nothing is uploaded anywhere.
 Type the commands into a terminal (macOS: Terminal; Linux: any terminal; Windows: use the
 installers, then open a new Command Prompt).
 
-### 2. Download this project (once)
+### 2. Download this project
 
 ```sh
 git clone https://github.com/kiteless/perkons-re
 cd perkons-re
 ```
 
-### 3. Start the Mod Matrix
+### 3. Let'er rip
 
 macOS / Linux:
 
@@ -96,8 +108,7 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 ### 5. Flash it
 
 1. Copy the new `perkons_v1.3.0-0-force.img` to the **root of the SD card**. It must have
-   exactly that name and be the only `.img` file there: replace any old one (on a Mac, if
-   Finder asks, choose **Replace**, not "Keep Both").
+   exactly that name and be the only `.img` file there: replace any old one.
 2. Put the card in the Pērkons. Power off, **hold all four voice trigger keys**, and power
    on. Let go when the first row of steps starts lighting; rows light 1 → 3 → 2 → 4, then
    the Pērkons starts.
@@ -107,7 +118,7 @@ Next time, just run step 3 again (in the `perkons-re` folder).
 ### 6. Use the mods
 
 [The voice map](docs/voice-map.md) (in every build) chooses each voice's engine. Each mod's
-page says how to use it:
+page says how to use it. Some of these are:
 [voice-zibens](https://github.com/kiteless/perkons-re-mods/tree/main/voice-zibens),
 [voice-akords](https://github.com/remixed123/perkons-re-mods/tree/main/voice-akords),
 [voice-step-sampler](https://github.com/kiteless/perkons-re-mods/tree/main/voice-step-sampler),
