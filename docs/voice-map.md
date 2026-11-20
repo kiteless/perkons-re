@@ -61,6 +61,10 @@ engine and opens it). The engine's README describes its page.
   (as on stock firmware).
 * Kits store knob positions per voice, so loading a kit made for a kick onto a voice now
   running the hats engine gives the hats engine those knob positions.
+* An engine that keeps more than the knobs with the kit (its preset, its sound) keeps it
+  for the voices that run it in that kit. A voice switched to another engine starts that
+  engine from its defaults; switching back doesn't bring the old sound back, loading the
+  saved kit does.
 
 ## Limits
 

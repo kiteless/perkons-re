@@ -184,7 +184,8 @@ def build_tag(chosen):
 # The Mod Matrix measures the platform alone, and each option on it (with what it requires),
 # and keeps {option: {area: {owner: bytes}}}: what the option adds to the platform. A
 # combination takes the union of the owners, so RAM two options share (the FX buffer)
-# counts once. The real build checks it exactly.
+# counts once, at the largest size any of them has (the voice map's kit slots grow with the
+# largest engine record). The real build checks it exactly.
 
 def with_requires(ids, by_id=None):
     """ids plus everything they require, transitively (in a stable order)."""
@@ -208,7 +209,9 @@ def ram_used(ids, memory):
     owners = {a: dict(own) for a, own in memory.get('platform', {}).items()}
     for i in ids:
         for area, own in memory['options'].get(i, {}).items():
-            owners.setdefault(area, {}).update(own)
+            got = owners.setdefault(area, {})
+            for k, size in own.items():
+                got[k] = max(got.get(k, 0), size)
     return {a: sum(owners.get(a, {}).values()) for a in memory['areas']}
 
 
@@ -238,11 +241,12 @@ def option_specs(oid, by_id):
 
 
 def beyond(got, base):
-    """A measurement (measure()) less what `base` (the platform's) has: what the option adds."""
+    """A measurement (measure()) less what `base` (the platform's) has: what the option adds
+    (an owner the option makes bigger: its whole size, ram_used takes the largest)."""
     def less(d, b, keep):
         out = {a: {k: keep(v, b.get(a, {}).get(k)) for k, v in own.items()} for a, own in d.items()}
         return {a: {k: v for k, v in own.items() if v} for a, own in out.items() if any(own.values())}
-    return {'ram': less(got['ram'], base['ram'], lambda v, b: None if b is not None else v),
+    return {'ram': less(got['ram'], base['ram'], lambda v, b: None if b is not None and v <= b else v),
             'takeovers': less(got['takeovers'], base['takeovers'], lambda v, b: None if b == v else v),
             'borrows': less(got['borrows'], base['borrows'], lambda v, b: [o for o in v if o not in (b or [])])}
 

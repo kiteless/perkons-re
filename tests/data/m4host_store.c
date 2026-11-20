@@ -21,3 +21,36 @@ void pk_st_load(int bank, int idx, const uint8_t *rec, uint32_t len)
     pk_st_len[idx] = len;
     pk_st_loaded[idx] = len ? rec[0] : 0xee;
 }
+
+/* two kit stores, for TestStoreFirst: 'F' is a first store, 'A' an ordinary one; the loads
+ * of real records are logged in order */
+uint8_t pk_st_order[8];
+uint32_t pk_st_n;
+
+uint32_t pk_st_first_save(int bank, int idx, uint8_t *buf, uint32_t max)
+{
+    (void)bank, (void)idx, (void)max;
+    buf[0] = 'F';
+    return 1;
+}
+
+uint32_t pk_st_other_save(int bank, int idx, uint8_t *buf, uint32_t max)
+{
+    (void)bank, (void)idx, (void)max;
+    buf[0] = 'A';
+    return 1;
+}
+
+void pk_st_first_load(int bank, int idx, const uint8_t *rec, uint32_t len)
+{
+    (void)bank, (void)idx;
+    if (len)
+        pk_st_order[pk_st_n++ & 7] = rec[0];
+}
+
+void pk_st_other_load(int bank, int idx, const uint8_t *rec, uint32_t len)
+{
+    (void)bank, (void)idx;
+    if (len)
+        pk_st_order[pk_st_n++ & 7] = rec[0];
+}

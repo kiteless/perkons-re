@@ -130,22 +130,23 @@ class Host(BaseHost):
     def fx(self):
         self.use_fx = True
 
-    def store(self, kind, tag, save, load):
+    def store(self, kind, tag, save, load, first=False):
         """Per-pattern or per-kit data in sidecar files (src/m4/host/pk_host_store.c):
         kind 'pattern' (BANKS/NN/PP.PAX) or 'kit' (BANKS/NN/KITS/PP.KIX); tag: 4 characters,
         the record's name; save: `uint32_t f(int bank, int idx, uint8_t *buf, uint32_t max)`
         returns the record's length (0: none); load: `void f(int bank, int idx, const
         uint8_t *rec, uint32_t len)`, after a bank load (every index) or a clear (len 0:
-        no record)."""
+        no record). first: saved and loaded before the other records of the file, wherever
+        it is in the file (the voice map's VMAP: the engines' records need it)."""
         if kind not in self.stores:
             raise HostError(f'store kind {kind!r}: pattern or kit')
         if len(tag) != 4 or not tag.isascii():
             raise HostError(f'store tag {tag!r}: 4 ASCII characters')
         for k, entries in self.stores.items():
-            for t, _, _ in entries:
+            for t, *_ in entries:
                 if k == kind and t == tag:
                     raise HostError(f'{kind} store tag {tag} used twice')
-        self.stores[kind].append((tag, save, load))
+        self.stores[kind].append((tag, save, load, bool(first)))
 
     def page(self, name, key, draw, enter=None, leave=None):
         """A UI page of its own: PK_PAGE_<NAME> (upper case) is its number, for fw_set_mode.
@@ -188,12 +189,12 @@ class Host(BaseHost):
         ents = ''.join(f'{{"{j}", (uint32_t)&{v}, 0x{ty:x}u, 0, 0}}, ' for j, v, ty in keys) or '{0, 0, 0, 0, 0}'
         lines += [f'static const pk_json_entry_t pk_mods_entries[] = {{{ents}}};',
                   f'const pk_json_schema_t pk_mods_schema = {{pk_mods_entries, {len(keys)}}};']
-        lines.append('typedef struct { char tag[4]; void *save, *load; } pk_store_t;')
+        lines.append('typedef struct { char tag[4]; void *save, *load; int first; } pk_store_t;')
         for kind in ('pattern', 'kit'):
-            entries = sorted(self.stores[kind])
-            lines += [f'extern char {f}[];' for _, a, b in entries for f in (a, b)]
-            rows = ''.join('{{' + ', '.join(f"'{c}'" for c in t) + f'}}, {a}, {b}}}, ' for t, a, b in entries) \
-                or '{{0}, 0, 0}'
+            entries = sorted(self.stores[kind], key=lambda e: (not e[3], e[0]))    # the first ones first
+            lines += [f'extern char {f}[];' for _, a, b, _ in entries for f in (a, b)]
+            rows = ''.join('{{' + ', '.join(f"'{c}'" for c in t) + f'}}, {a}, {b}, {int(fst)}}}, '
+                           for t, a, b, fst in entries) or '{{0}, 0, 0, 0}'
             lines += [f'const pk_store_t pk_store_{kind}[] = {{{rows}}};',
                       f'const int pk_n_store_{kind} = {len(entries)};']
         if self.pages:

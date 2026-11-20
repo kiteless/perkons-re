@@ -247,6 +247,19 @@ Matrix then lists it on the ENGINES tab, and passes the slot (`my_engine:6`) fro
 order it's installed in. (A `requires` on `voice-map`, from before it was the platform,
 is ignored.)
 
+**Keeping a sound with the kit.** An engine that saves more than the stock knobs per kit
+and voice doesn't keep a 64 × 4 table of its own: the voice map keeps one table of kit
+slots for all engines, as big as the largest engine's record, so installing another engine
+doesn't add another table. Declare the record's size, `'kit_bytes': 24` in the
+`engines(p)` entry, and on the M4 (`pk_vm.h`) use `pk_vm_kit_slot(kit, v, engine, bytes)`:
+voice v's slot in that kit if the voice runs your engine there, else 0. The slot belongs to
+the engine the voice has in that kit: a voice that changes engine gets an empty slot (all
+0), so make all 0 mean "nothing saved" (your defaults). In your kit store (`h.store('kit',
+...)`): save and restore only the voices whose slot you get (at a bank load the engine map
+is read first, whatever the record order), and on a kit load give the other voices your
+defaults. Switching a voice's engine and back doesn't bring the old sound back; a saved kit
+does.
+
 ### C rules (both cores)
 
 `-Os`, freestanding, no libc. Functions named `pk*` are kept as hook targets. Call
