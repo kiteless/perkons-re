@@ -146,9 +146,10 @@ class Patcher:
         self._finishers.append(fn)
 
     def ram_use(self, area, owner, size, addr=None):
-        """Record RAM this build takes in a ram.AREAS area (`addr` for a fixed range)."""
-        from . import ram
-        if area not in ram.AREAS:
+        """Record RAM this build takes in a ram.AREAS area (`addr` for a fixed range), or code
+        in a flash.AREAS one (no addr: the host records it, flash.record_linked)."""
+        from . import flash, ram
+        if area not in ram.AREAS + flash.AREAS:
             raise PatchError(f'{owner}: unknown RAM area {area!r}')
         self.ram.setdefault(area, {})[owner] = (addr, size)
 

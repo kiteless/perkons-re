@@ -171,6 +171,12 @@ M4 can't reach it). The M7 reads M4 RAM and STORE as they are (its data cache is
 for settings send it a config message; share memory both ways only for bulk data, at a
 fixed range you record.
 
+Code and `const` data (tables, wavetables, strings) stay in flash and use no RAM. Each
+core's mods share a fixed code budget: **256 KB on the M4** and **128 KB on the M7**,
+counted by source like RAM and shown on the Mod Matrix's FLASH meter. The Mod Matrix won't
+tick a mod that would overrun one, and the build refuses code over it
+(`tools/perkons/flash.py`).
+
 #### Memory: what's counted for you, what you must record
 
 The meters are only as right as what the build knows, so every byte of RAM a mod uses must

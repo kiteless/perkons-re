@@ -63,6 +63,12 @@ firmware's own code and watching what it changes.
 firmware code in the emulator and verifies the effect the symbols promise, and that
 every patch site holds what it should.
 
+## Flash layout
+
+The mods' code budgets (`tools/perkons/flash.py`) are fixed. That holds as long as the new
+M7 firmware is at most 768 KB and the M4 firmware at most 256 KB. The porter checks this
+first and stops if a version is bigger: the layout then needs re-planning.
+
 ## When the porter can't help
 
 If a new release *rewrites* the code a mod hooks (rather than recompiling it), the

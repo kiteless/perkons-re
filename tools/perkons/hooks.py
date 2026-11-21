@@ -18,7 +18,7 @@ generated headers, their hook registrations, and the link.
 """
 import os
 
-from . import cbuild
+from . import cbuild, flash
 
 
 class HostError(Exception):
@@ -69,11 +69,15 @@ class BaseHost:
         """Compile and link the host's sources, the mods' and the generated ones (<prefix>_gen.c:
         `gen`, <prefix>_chains.c: the hook chains, see collect) into this core's cave.
         Returns the blob; self.syms gets the linked symbols."""
+        err = flash.check_firmware(self.p.img)
+        if err:
+            raise HostError(err)
+        build_dir = os.path.join(self.p.build_dir, f'{self.core}host')
         try:
             blob, self.syms = cbuild.build(
                 self.core, host_sources + self.sources, self.include_dirs,
-                os.path.join(self.p.build_dir, f'{self.core}host'), self.p.cave_origin(self.core), entry,
-                self.p.symbols[self.core], defines=self.defines,
+                build_dir, flash.code_origin(self.p, self.core), entry,
+                self.p.symbols[self.core], defines=self.defines, max_len=flash.CODE[self.core],
                 extra_headers={k: v() if callable(v) else v for k, v in sorted(self.headers.items())},
                 extra_sources={f'{prefix}_gen.c': gen,
                                f'{prefix}_chains.c': gen_source(chains, nxt, events, magic_symbol, magic)}, **kw)
@@ -82,7 +86,11 @@ class BaseHost:
             if unreg:
                 raise HostError(f'{", ".join(unreg)}: call PK_NEXT but are not registered as hooks '
                                 '(h.redirect_call / redirect_branch / replace_word)') from None
+            if 'will not fit in region' in str(e) or 'overflowed by' in str(e):
+                raise HostError(f'{self.core.upper()} mods\' code is over its {flash.CODE[self.core] // 1024} KB '
+                                f'of flash (tools/perkons/flash.py):\n{e}') from None
             raise
+        flash.record_linked(self.p, self.core, build_dir, len(blob))
         return blob
 
 

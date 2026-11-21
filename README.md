@@ -154,9 +154,9 @@ build touches.
 | `tools/run_tests.py` | framework tests + mod tests |
 | `start_modmatrix.py` | one-step setup + start of the Mod Matrix (see [Get modded firmware](#get-modded-firmware)) |
 | `tools/modmatrix.py`, `ui/modmatrix/` | **Mod Matrix**: pick mods with checkboxes, build modded firmware from your own official image in the browser |
-| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `voicemap` (the voice map: any engine on any voice), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas) |
+| `tools/perkons/` | library: `fwimage` (container), `emu` (`M7Emu`, `M7System`, `M4Emu` + virtual SD card), `patch` (guarded byte patches), `cbuild` (C → code cave), `verify` (behavioural checks), `mods` (out-of-tree patches), `m4host` (shared M4 plumbing for mods), `voicemap` (the voice map: any engine on any voice), `catalog` (Mod Matrix options and image checks), `ram` (MAIN / VOICE / STORE areas), `flash` (the mods' code budgets: M4 CODE, M7 CODE) |
 | `include/m4`, `include/m7` | C headers describing the firmware for patch code |
-| `patches/` | `voice_map` (the platform, in every build: [docs/voice-map.md](docs/voice-map.md)), `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the STORE area stays untouched) |
+| `patches/` | `voice_map` (the platform, in every build: [docs/voice-map.md](docs/voice-map.md)), `tag_build` (string-only smoke test), `example_hook` (template C patch), `version_stamp` (identify a build in `INFO.TXT` + boot banner), `axi_canary` (test image: reports in `CANARY.TXT` whether the STORE area stays untouched), `flash_test` (test image: fills both flash regions to the end and reports in `FLASHTST.TXT` whether every sector was written) |
 | `symbols/` | per-version functions, globals, struct offsets and named patch sites; the only place addresses live (read by the emulator, C builds, patches and Ghidra) |
 | `ghidra/` | headless import + analysis, decompile, and "who references X" query scripts |
 | `docs/porting.md` | moving mods to a new official firmware: symbol porter, probes, checks, rehearsal results |
@@ -240,6 +240,13 @@ ticked (in VOICE, the voice map's engine arenas from the start), and FREE is wha
 parts (STEP SAMPLER: the stock custom-sample memory) shows it green instead. The meters
 follow the ticks, and a mod that wouldn't fit can't be ticked; the build itself checks
 again, exactly (`tools/perkons/ram.py`).
+
+The mods' code in flash has a fixed budget per core, the same for every build and every
+supported firmware version: **128 KB on the M7** (after the M7 firmware, which may grow to
+768 KB) and **256 KB on the M4** (after the M4 firmware, which may grow to 256 KB). The
+**FLASH** meter is all 2 MB of flash with everything but these two budgets grey; a mod
+that would overrun a budget can't be ticked and says so, and the build refuses code that
+doesn't fit (`tools/perkons/flash.py`).
 
 ### Adding a mod to it
 

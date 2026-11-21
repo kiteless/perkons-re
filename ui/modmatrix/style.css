@@ -43,7 +43,7 @@ canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edge
 #side { flex: 0 0 auto; align-self: stretch; display: flex; flex-direction: column; gap: 24px; }
 #go { flex: 0 0 auto; padding: 24px; background: var(--blue); border: 24px solid var(--lightblue); }
 
-/* memory pane: three meters, after the sign-on screen of a 1992 PC shooter; the ring
+/* memory pane: four meters (three RAM blocks and the flash), after the sign-on screen of a 1992 PC shooter; the ring
    columns take what the text leaves */
 #mem {
   flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
@@ -182,5 +182,44 @@ body[data-screen="mods"] #s1 { display: none; }
 .dl:hover, .dl:focus-visible { background: var(--white); outline: none; }
 
 #disclaimer { max-width: 1320px; margin: 0 auto 24px; padding: 0 24px; }
+/* on the mods screen, as wide as the screen and the memory / PATCH IT panes together (the
+   desk's box: they fill it) */
+body[data-screen="mods"] #disclaimer { max-width: 1800px; }
+@media (max-width: 1100px) { body[data-screen="mods"] #disclaimer { max-width: 1368px; } }
+@media (max-width: 600px) { #disclaimer { padding: 0 8px; } }
 #disclaimer .pix:not(.warn) { color: var(--grey); }
 
+
+/* the mods screen, side by side (wide windows): the desk fills the window under the banner,
+   so the memory pane keeps one height; the list of mods or engines scrolls inside the blue
+   screen when it's longer than that (the title, tabs and build log stay put) */
+@media (min-width: 1101px) {
+  body[data-screen="mods"] #desk { height: calc(100vh - 150px - 48px); min-height: 480px; align-items: stretch; }
+  body[data-screen="mods"] #screen { display: flex; flex-direction: column; min-height: 0; }
+  body[data-screen="mods"] #s2 { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  body[data-screen="mods"] #mods, body[data-screen="mods"] #voices {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 12px;
+  }
+  /* its scrollbar, 8-bit style (Safari, Chrome, the desktop app): boxed pixel arrows, a
+     checkered track, a framed white thumb; Firefox gets plain colours */
+  @supports not selector(::-webkit-scrollbar) {
+    #mods, #voices { scrollbar-color: var(--lightblue) var(--blue); }
+  }
+  #mods::-webkit-scrollbar, #voices::-webkit-scrollbar { width: 24px; }
+  #mods::-webkit-scrollbar-track, #voices::-webkit-scrollbar-track {
+    background: repeating-conic-gradient(var(--lightblue) 0 25%, var(--blue) 0 50%) 0 0 / 4px 4px;
+  }
+  #mods::-webkit-scrollbar-thumb, #voices::-webkit-scrollbar-thumb { background: var(--white); border: 2px solid var(--lightblue); }
+  #mods::-webkit-scrollbar-button:single-button, #voices::-webkit-scrollbar-button:single-button {
+    display: block; height: 24px; background: var(--blue) center / 16px 16px no-repeat; border: 2px solid var(--lightblue);
+  }
+  #mods::-webkit-scrollbar-button:single-button:decrement, #voices::-webkit-scrollbar-button:single-button:decrement {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M3 2h2v1h1v1h1v1h1v1H0V5h1V4h1V3h1z'/%3E%3C/svg%3E");
+  }
+  #mods::-webkit-scrollbar-button:single-button:increment, #voices::-webkit-scrollbar-button:single-button:increment {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M0 2h8v1H7v1H6v1H5v1H3V5H2V4H1V3H0z'/%3E%3C/svg%3E");
+  }
+  #mods::-webkit-scrollbar-button:active, #voices::-webkit-scrollbar-button:active { background-color: var(--lightblue); }
+  body[data-screen="mods"] #voices[hidden], body[data-screen="mods"] #mods[hidden] { display: none; }
+  body[data-screen="mods"] #result { flex: 0 1 auto; min-height: 0; max-height: 40%; overflow-y: auto; }
+}

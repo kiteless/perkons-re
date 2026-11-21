@@ -180,7 +180,7 @@ def build_tag(chosen):
     return tag
 
 
-# -- RAM (MAIN / VOICE / STORE, see ram.py) ----------------------------------------------
+# -- RAM (MAIN / VOICE / STORE, see ram.py) and code flash (M4 CODE / M7 CODE, flash.py) --
 # The Mod Matrix measures the platform alone, and each option on it (with what it requires),
 # and keeps {option: {area: {owner: bytes}}}: what the option adds to the platform. A
 # combination takes the union of the owners, so RAM two options share (the FX buffer)
@@ -216,8 +216,9 @@ def check_memory(ids, memory):
     used = ram_used(ids, memory)
     for a, info in memory['areas'].items():
         if used[a] > info['size']:
-            raise CatalogError(f'out of memory in {a.upper()}: these mods need {used[a]} B, '
-                               f'{info["size"]} B available')
+            where = {'m4code': 'out of code space on the M4', 'm7code': 'out of code space on the M7'}.get(
+                a, f'out of memory in {a.upper()}')
+            raise CatalogError(f'{where}: these mods need {used[a]} B, {info["size"]} B available')
 
 
 def canonical_owner(owner):

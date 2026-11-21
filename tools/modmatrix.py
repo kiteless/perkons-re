@@ -14,10 +14,12 @@ API (JSON unless noted):
                                changed on disk since this server started: restart it)
   GET  /api/mods               options, and the stock and platform controls (perkons.controls)
   POST /api/inspect            body: the .img bytes -> {image id, version, official, ...}
-  GET  /api/memory/<image>     RAM per option, measured in the background after inspect:
-                               {state: measuring|done, areas: {main|voice|store: {start, size: the
-                                mods' part, block: {name, start, size, ranges: [{owner, start,
+  GET  /api/memory/<image>     RAM and code flash per option, measured in the background after inspect:
+                               {state: measuring|done, areas: {main|voice|store|m4code|m7code: {start, size: the
+                                mods' part, block (RAM only): {name, start, size, ranges: [{owner, start,
                                 size}]}: the physical block, stock's ranges and 'mods'}},
+                                flash: {name, start, size, ranges}: all 2 MB, the mods' code
+                                budgets named m7code / m4code (the FLASH meter),
                                 platform: {area: {owner: bytes}}: in every build,
                                 options: {id: {area: {owner: bytes}}}: what each adds to it,
                                 takeovers: {id: {area: {stock range: owner}}},
@@ -49,12 +51,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.insert(0, ROOT)
 from build import build_image, m7_code, regression  # noqa: E402
-from perkons import catalog, cbuild, controls, mods, ram, repos, srchash  # noqa: E402
+from perkons import catalog, cbuild, controls, flash, mods, ram, repos, srchash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 from perkons.mods import mod_dirs  # noqa: E402
 
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
-MEMORY_FORMAT = 4          # the shape of a measurement (/api/memory): part of its cache key
+MEMORY_FORMAT = 6          # the shape of a measurement (/api/memory): part of its cache key
 MAX_IMAGE = 16 * 1024 * 1024
 
 
@@ -212,6 +214,11 @@ class App:
                                'ranges': [{'owner': o, 'start': s, 'size': e - s}
                                           for o, s, e in blocks[a]['ranges']]}}
                  for a, (lo, hi) in ram.areas(syms).items()}
+        fw_end = {c: img.segment(c).addr + len(img.segment(c).data) for c in ('m4', 'm7')}
+        areas.update({a: {'start': lo, 'size': hi - lo} for a, (lo, hi) in flash.areas(fw_end).items()})
+        fb = flash.block(fw_end)
+        fblock = {'name': fb['name'], 'start': fb['start'], 'size': fb['end'] - fb['start'],
+                  'ranges': [{'owner': o, 'start': s, 'size': e - s} for o, s, e in fb['ranges']]}
         opts, takeovers, borrows, errors = {}, {}, {}, {}
         with self.build_lock:
             try:
@@ -234,7 +241,7 @@ class App:
                         borrows[o['id']] = got['borrows']
                 except BaseException as e:   # also sys.exit from a target mismatch
                     errors[o['id']] = str(e)
-        self.memory[image_id] = m = {'state': 'done', 'version': info['version'], 'areas': areas,
+        self.memory[image_id] = m = {'state': 'done', 'version': info['version'], 'areas': areas, 'flash': fblock,
                                      'platform': platform['ram'], 'options': opts,
                                      'takeovers': takeovers, 'borrows': borrows, 'errors': errors}
         if not errors:

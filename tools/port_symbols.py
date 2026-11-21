@@ -17,6 +17,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
+from perkons import flash  # noqa: E402
 from perkons.emu import Symbols  # noqa: E402
 from perkons.fwimage import Image  # noqa: E402
 from perkons.mods import symbol_overlays  # noqa: E402
@@ -87,6 +88,9 @@ def main():
     a = ap.parse_args()
     old_img = Image.load(a.from_img or find_img(a.src))
     new_img = Image.load(a.to_img or find_img(a.dst))
+    err = flash.check_firmware(new_img)
+    if err:
+        sys.exit(f'{a.dst}: {err}: the mods\' flash layout needs re-planning before this version can be supported')
     report, outputs = [], {}
     for core in ('m7', 'm4'):
         print(f'== {core}: {a.src} -> {a.dst}')

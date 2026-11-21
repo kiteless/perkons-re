@@ -165,19 +165,28 @@ class TestModMatrix(unittest.TestCase):
                 break
             time.sleep(0.2)
         self.assertEqual(mem['state'], 'done')
-        self.assertEqual(set(mem['areas']), {'main', 'voice', 'store'})
+        self.assertEqual(set(mem['areas']), {'main', 'voice', 'store', 'm4code', 'm7code'})
         for a, v in mem['areas'].items():                 # the physical block, tiled by its ranges
+            if a in ('m4code', 'm7code'):
+                continue                                  # on the FLASH meter, below
             b = v['block']
             self.assertEqual(sum(r['size'] for r in b['ranges']), b['size'], a)
             mods = [r for r in b['ranges'] if r['owner'] == 'mods']
             self.assertEqual([(r['start'], r['size']) for r in mods], [(v['start'], v['size'])], a)
+        f = mem['flash']                                  # all 2 MB; the code budgets lit
+        self.assertEqual((f['start'], f['size']), (0x08000000, 0x200000))
+        self.assertEqual(sum(r['size'] for r in f['ranges']), f['size'])
+        self.assertEqual({r['owner']: (r['start'], r['size']) for r in f['ranges'] if r['owner'].endswith('code')},
+                         {a: (mem['areas'][a]['start'], mem['areas'][a]['size']) for a in ('m4code', 'm7code')})
         self.assertEqual(mem['takeovers'], {})
         self.assertEqual(mem['borrows'], {})
         self.assertEqual(mem['errors'], {})
         self.assertEqual(mem['options']['tag'], {}, 'what it adds to the platform: nothing')
         platform = {a: sum(own.values()) for a, own in mem['platform'].items()}
         self.assertGreaterEqual(platform['voice'], 4 * 0x4000, 'voice-map\'s engine arenas')
-        self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), dict({'main': 0, 'voice': 0, 'store': 0}, **platform))
+        self.assertGreater(platform['m4code'], 0, 'the M4 host\'s code')
+        self.assertGreater(platform['m7code'], 0, 'the M7 host\'s code')
+        self.assertEqual(catalog.ram_used(['tag', 'needs'], mem), dict({a: 0 for a in mem['areas']}, **platform))
         code, _ = self.call('/api/memory/nope')
         self.assertEqual(code, 404)
 

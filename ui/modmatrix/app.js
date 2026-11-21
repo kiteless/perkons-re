@@ -577,9 +577,18 @@ function uninstall(id) {
 /* everything the build would take: ticked mods and installed voices */
 const picked = () => [...state.chosen, ...state.voices];
 
-/* ---- memory: MAIN (M4 patch RAM), VOICE (M7), STORE (AXI SRAM); see tools/perkons/ram.py ---- */
+/* ---- memory: MAIN (M4 patch RAM), VOICE (M7), STORE (AXI SRAM), see tools/perkons/ram.py,
+ * each with a meter; and the mods' code in flash (m4code, m7code: tools/perkons/flash.py),
+ * both on the FLASH meter ---- */
 
-const AREAS = ["main", "voice", "store"];
+const AREAS = ["main", "voice", "store", "m4code", "m7code"];
+
+/* why an option that would overrun `area` can't be ticked */
+function overNote(area) {
+  const code = { m4code: "M4", m7code: "M7" }[area];
+  if (!code) return `?OUT OF MEMORY ERROR IN ${area.toUpperCase()}`;
+  return `?OUT OF CODE SPACE ON THE ${code}: ${kb(state.memory.areas[area].size)} MAX`;
+}
 
 /* ids plus what they require, transitively (catalog.with_requires) */
 function withRequires(ids) {
@@ -632,11 +641,14 @@ function ramTaken(ids) {
    at the bottom. Grey: the firmware's own ranges; green: the mods' part as far as these
    options use it, and stock ranges a mod has taken over; white: what the option under the
    pointer would add; dark: free for mods. Red / yellow green when the mods' part is (nearly)
-   full. */
+   full. FLASH is all 2 MB with two mods' parts, the code budgets (m7code, m4code): a ring
+   that touches one is that part's, and lights when any of its span is used. */
 const RING = [60, 126, 231, 195, 231, 126, 60, 0];
 const RING_S = 3, CELL = 8 * RING_S;
 
-function drawMeter(cv, area, used, extra, taken, ghostTaken) {
+/* block: {start, size, ranges: [{owner, start, size}]}; parts: {range owner: {used, extra,
+ * size}} for the mods' parts; partial: light a ring any of whose span is used */
+function drawMeter(cv, block, parts, taken, ghostTaken, partial) {
   const W = cv.clientWidth, H = cv.clientHeight;
   cv.width = W * DPR;
   cv.height = H * DPR;
@@ -644,17 +656,19 @@ function drawMeter(cv, area, used, extra, taken, ghostTaken) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const n = Math.max(1, Math.floor(H / CELL)), x = Math.floor((W - CELL) / 2);
-  const block = area && area.block;
-  const full = area ? used / area.size : 0;
-  const lit = full >= 0.85 ? C64.lightred : full >= 0.6 ? C64.yellow : C64.lightgreen;
   for (let i = 0; i < n; i++) {
     let color = C64.darkgrey;
     if (block) {
-      const mid = block.start + (i + 0.5) / n * block.size;        // the address this ring stands for
-      const r = block.ranges.find((g) => mid >= g.start && mid < g.start + g.size) || block.ranges[0];
-      if (r.owner === "mods") {
-        const at = mid - r.start;
-        color = at < used ? lit : at < used + extra ? C64.white : C64.darkgrey;
+      const lo = block.start + i / n * block.size, hi = block.start + (i + 1) / n * block.size;
+      const mid = (lo + hi) / 2;                                    // the address this ring stands for
+      const r = (partial && block.ranges.find((g) => parts[g.owner] && g.start < hi && g.start + g.size > lo))
+        || block.ranges.find((g) => mid >= g.start && mid < g.start + g.size) || block.ranges[0];
+      const p = parts[r.owner];
+      if (p) {
+        const full = p.used / p.size;
+        const lit = full >= 0.85 ? C64.lightred : full >= 0.6 ? C64.yellow : C64.lightgreen;
+        const at = (partial ? Math.max(lo, r.start) : mid) - r.start;
+        color = at < p.used ? lit : at < p.used + p.extra ? C64.white : C64.darkgrey;
       } else {
         color = taken.has(r.owner) ? C64.lightgreen : ghostTaken.has(r.owner) ? C64.white : C64.grey;
       }
@@ -669,17 +683,30 @@ function drawMeter(cv, area, used, extra, taken, ghostTaken) {
   }
 }
 
+const FLASH_PARTS = ["m7code", "m4code"];
+
 function renderMem() {
   const m = state.memory, done = m && m.state === "done";
   const ids = withRequires(picked());
   const used = done ? ramUsed(ids) : null;
   const hov = done && state.hover && !ids.includes(state.hover) ? ramUsed(withRequires([...ids, state.hover])) : null;
+  const part = (a) => ({ used: used[a], extra: hov ? Math.max(0, hov[a] - used[a]) : 0, size: m.areas[a].size });
   for (const col of document.querySelectorAll("#mem .col")) {
     const a = col.dataset.area, cap = col.querySelector(".cap"), free = col.querySelector(".free");
+    const meter = col.querySelector(".meter");
     if (!done) {
       setPix(cap, "-");
       setPix(free, "-");
-      drawMeter(col.querySelector(".meter"), null, 0, 0, new Set(), new Set());
+      drawMeter(meter, null, {}, new Set(), new Set());
+      continue;
+    }
+    if (a === "flash") {
+      const left = FLASH_PARTS.map((p) => m.areas[p].size - used[p]);
+      setPix(cap, kb(m.flash.size));
+      free.className = "pix free" + (left.some((l) => l < 0) ? " out"
+        : left.some((l, k) => l < m.areas[FLASH_PARTS[k]].size * 0.15) ? " low" : "");
+      setPix(free, kb(left.reduce((t, l) => t + Math.max(0, l), 0)));
+      drawMeter(meter, m.flash, Object.fromEntries(FLASH_PARTS.map((p) => [p, part(p)])), new Set(), new Set(), true);
       continue;
     }
     const size = m.areas[a].size, left = size - used[a];
@@ -688,8 +715,7 @@ function renderMem() {
     setPix(free, left < 0 ? "0K" : kb(left));
     const taken = (ramTaken(ids)[a]) || new Set();
     const ghost = hov ? (ramTaken(withRequires([...ids, state.hover]))[a] || new Set()) : new Set();
-    drawMeter(col.querySelector(".meter"), m.areas[a], used[a], hov ? Math.max(0, hov[a] - used[a]) : 0,
-      taken, new Set([...ghost].filter((g) => !taken.has(g))));
+    drawMeter(meter, m.areas[a].block, { mods: part(a) }, taken, new Set([...ghost].filter((g) => !taken.has(g))));
   }
   const note = $("memnote");
   note.hidden = done;
@@ -723,6 +749,7 @@ function showScreen(name) {
   scrollTo(0, 0);
   updatePatch();
   renderMem();
+  $("disclaimer").querySelectorAll(".pix").forEach(pixRender);     // its width differs per screen
 }
 
 /* ---- step 1: the mod repos (tools/perkons/repos.py). The ticked ones are kept in this
@@ -863,7 +890,7 @@ function optionItem(o, title) {
   }
   const cl = clashes(o);
   if (cl.length) label.append(pix("p", "err", `CAN'T BE COMBINED WITH ${cl.join(", ").toUpperCase()}`));
-  if (over) label.append(pix("p", "err", `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`));
+  if (over) label.append(pix("p", "err", overNote(over)));
   if (merr) label.append(pix("p", "err", `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}`));
   li.append(label);
   const from = fromLine(o);
@@ -912,7 +939,7 @@ function renderVoices() {
     const gone = unoffered(o);
     const note = !usable(o) && state.info ? `NOT AVAILABLE FOR ${state.info.version}`
       : gone.length ? `NEEDS ${gone.map(repoOf).join(", ").toUpperCase()}: GO BACK AND TICK IT`
-      : over ? `?OUT OF MEMORY ERROR IN ${over.toUpperCase()}`
+      : over ? overNote(over)
       : merr ? `?MEASURE ERROR: ${merr.toUpperCase().slice(0, 100)}` : full ? "ALL SLOTS TAKEN" : null;
     avail.append(voiceButton(o, o.title, async () => { if (await controlsOk(o)) install(o.id); },
       usable(o) && !gone.length && !over && !merr && !full, note));
