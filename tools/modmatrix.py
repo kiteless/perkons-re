@@ -28,10 +28,16 @@ API (JSON unless noted):
                                checks: bool} -> {job}
   GET  /api/job/<id>           {state: running|done|failed, log: [...], partial: the line being
                                written (progress dots), download}
-  GET  /api/download/<id>      the built image (application/octet-stream)
+  GET  /api/download/<id>      the built image (application/octet-stream); the first download
+                               of a build is recorded (see /api/builds)
+  GET  /api/builds             {builds: [...]}: the downloaded builds, newest first (the last
+                               KEEP_BUILDS, kept in .cache/builds.json across restarts): {when (UTC,
+                               ISO 8601), version, tag, mods: [{id, title, repo, ref, commit}]};
+                               a mod on disk has local: true and no ref or commit
 """
 import argparse
 import contextlib
+import datetime
 import hashlib
 import io
 import json
@@ -58,6 +64,7 @@ from perkons.mods import mod_dirs  # noqa: E402
 UI_DIR = os.path.join(ROOT, 'ui', 'modmatrix')
 MEMORY_FORMAT = 6          # the shape of a measurement (/api/memory): part of its cache key
 MAX_IMAGE = 16 * 1024 * 1024
+KEEP_BUILDS = 20           # downloaded builds remembered (/api/builds)
 
 
 class LineLog(io.TextIOBase):
@@ -82,6 +89,8 @@ class Job:
         self.img, self.raw, self.chosen, self.specs, self.checks = img, raw, chosen, specs, checks
         self.state, self.log, self.out, self.name = 'running', [], None, None
         self.partial = ''                    # the line being written, not yet in log
+        self.record = None                   # what was built, for /api/builds (once done)
+        self.recorded = False                # downloaded (recorded) already
         self.lock = threading.Lock()
 
     def say(self, line):
@@ -93,6 +102,20 @@ class Job:
             return {'state': self.state, 'log': self.log[since:], 'next': len(self.log), 'partial': self.partial,
                     'download': f'/api/download/{self.id}' if self.state == 'done' else None,
                     'name': self.name}
+
+
+def builds_file():
+    return os.path.join(repos.CACHE, 'builds.json')
+
+
+def read_builds():
+    """The downloaded builds, newest first; none if the file is missing or unreadable."""
+    try:
+        with open(builds_file()) as f:
+            builds = json.load(f)['builds']
+        return builds if isinstance(builds, list) else []
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
 
 
 def code_stamp():
@@ -122,6 +145,7 @@ class App:
         self.local = catalog.options()       # mods on disk (PERKONS_MODS)
         self.repo_list, self.offered, self.repo_error = None, [], None
         self.repos_lock = threading.Lock()
+        self.builds_lock = threading.Lock()
         threading.Thread(target=self.load_repos, daemon=True).start()
 
     def status(self):
@@ -271,17 +295,39 @@ class App:
         return m
 
     def fetch_mods(self, chosen):
-        """The chosen downloadable mods, each repo's at the commit it's at now: their
-        directories, for the build."""
-        dirs = []
+        """The chosen downloadable mods, each repo's at the commit it's at now: (their
+        directories, for the build; {(repo, ref): that commit})."""
+        dirs, commits = [], {}
         by_repo = {}
         for o in chosen:
             if not o.get('local'):
                 by_repo.setdefault((o['repo'], o['ref']), []).append(o['dir'])
         for (repo, ref), want in by_repo.items():
             root = repos.download(repo, ref, sorted(set(want)))
+            commits[(repo, ref)] = os.path.basename(root)       # downloads are kept by commit
             dirs += [os.path.join(root, *d.split('/')) for d in sorted(set(want))]
-        return dirs
+        return dirs, commits
+
+    def record_download(self, job):
+        """Remember a build the first time it's downloaded: what went on the unit, as far as
+        anyone here can know."""
+        with self.builds_lock:
+            if job.recorded or not job.record:
+                return
+            job.recorded = True
+            record = dict(job.record, when=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'))
+            builds = [record] + read_builds()
+            try:
+                os.makedirs(os.path.dirname(builds_file()), exist_ok=True)
+                with open(builds_file() + '.tmp', 'w') as f:
+                    json.dump({'builds': builds[:KEEP_BUILDS]}, f, indent=1)
+                os.replace(builds_file() + '.tmp', builds_file())
+            except OSError as e:
+                print(f'can\'t record the build: {e}', file=sys.stderr)
+
+    def builds(self):
+        with self.builds_lock:
+            return {'builds': read_builds()}
 
     def start_build(self, req):
         if req.get('image') not in self.images:
@@ -313,7 +359,7 @@ class App:
                     job.say(f'MODS: {titles}')
                     if any(not o.get('local') for o in job.chosen):
                         job.say('DOWNLOADING THE MODS...')
-                    mods.EXTRA[:] = self.fetch_mods(job.chosen)     # (one build at a time)
+                    mods.EXTRA[:], commits = self.fetch_mods(job.chosen)     # (one build at a time)
                     job.say(f'TAG: {tag}')
                     built, p = build_image(job.img, out, specs, symbols, build_dir=os.path.join(d, 'obj'),
                                            extra_kwargs={'version_stamp': {'banner': f'+ mod matrix: {titles}'}})
@@ -322,6 +368,12 @@ class App:
                         if bad:
                             raise RuntimeError(f'{len(bad)} voice renders differ from stock: not safe to flash')
                 job.out, job.name = out, f'perkons_v{job.img.version}-0-force.img'
+                job.record = {'version': job.img.version, 'tag': tag, 'mods': [
+                    {'id': o['id'], 'title': o['title'], 'local': True, **({'repo': o['repo']} if o.get('repo') else {})}
+                    if o.get('local') else
+                    {'id': o['id'], 'title': o['title'], 'repo': o['repo'], 'ref': o['ref'],
+                     'commit': commits[(o['repo'], o['ref'])]}
+                    for o in job.chosen]}
                 job.say('READY.')
                 job.state = 'done'
             except Exception as e:
@@ -374,6 +426,8 @@ def make_handler(app):
                 return self.guarded(app.status)
             if path == '/api/repos':
                 return self.guarded(app.repos)
+            if path == '/api/builds':
+                return self.guarded(app.builds)
             if path == '/api/mods':
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
                 ticked = [r for r in q.get('repos', [''])[0].split(',') if r] if 'repos' in q else None
@@ -402,6 +456,7 @@ def make_handler(app):
                 self.send_header('Content-Length', str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+                app.record_download(job)
                 return
             if path.startswith('/api/'):
                 return self.send_json({'error': 'not found'}, HTTPStatus.NOT_FOUND)

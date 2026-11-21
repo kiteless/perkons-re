@@ -240,6 +240,16 @@ class TestModMatrix(unittest.TestCase):
         self.assertIn('DOWNLOADING THE MODS...', snap['log'])
         self.assertTrue(GITHUB.fetched(REMOTE, 'extra-mod/README.md'))
         self.assertFalse(GITHUB.fetched(REMOTE, 'other-mod/'), 'only the chosen mod')
+        _, before = self.call('/api/builds')
+        self.call(snap['download'])
+        self.call(snap['download'])                                     # once only
+        _, after = self.call('/api/builds')
+        self.assertEqual(len(after['builds']), len(before['builds']) + 1, 'recorded on download')
+        b = after['builds'][0]
+        self.assertEqual((b['version'], b['tag']), ('1.3.0', 'mm-rt'))
+        self.assertEqual(b['mods'], [{'id': f'{REMOTE}:remote-tag', 'title': 'REMOTE TAG', 'repo': REMOTE,
+                                      'ref': 'main', 'commit': GITHUB.sha[REMOTE]}])
+        self.assertRegex(b['when'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$')
 
     def test_build_and_download(self):
         code, info = self.call('/api/inspect', body=self.raw)
@@ -258,3 +268,23 @@ class TestModMatrix(unittest.TestCase):
         self.assertTrue(all(s.crc_ok for s in img.segments))
         self.assertIn(b'mm-tg', img.segment('m4').data)                 # INFO.TXT stamp
         self.assertNotEqual(data, self.raw)
+        _, got = self.call('/api/builds')
+        self.assertEqual(got['builds'][0]['mods'], [{'id': 'tag', 'title': 'TAG BUILD', 'local': True}],
+                         'a mod on disk: no commit')
+
+    def test_builds_are_kept_across_restarts_and_limited(self):
+        saved = modmatrix.read_builds()
+        try:
+            job = modmatrix.Job(None, b'', [], [], False)
+            for i in range(modmatrix.KEEP_BUILDS + 3):
+                job.record, job.recorded = {'version': '1.3.0', 'tag': f'mm-{i}', 'mods': []}, False
+                self.app.record_download(job)
+            builds = modmatrix.App.builds(self.app)['builds']
+            self.assertEqual(len(builds), modmatrix.KEEP_BUILDS)
+            self.assertEqual(builds[0]['tag'], f'mm-{modmatrix.KEEP_BUILDS + 2}', 'newest first')
+            with open(modmatrix.builds_file(), 'w') as f:
+                f.write('not json')
+            self.assertEqual(self.call('/api/builds')[1], {'builds': []}, 'a broken file: no builds')
+        finally:
+            with open(modmatrix.builds_file(), 'w') as f:
+                json.dump({'builds': saved}, f)
