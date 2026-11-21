@@ -171,6 +171,12 @@ body[data-screen="mods"] #s1 { display: none; }
 .patch.busy .pix { color: var(--blue); }
 
 #result { margin-top: 32px; }
+/* patching: the build log takes the mods' place under the title and firmware line */
+body[data-screen][data-log] #s2 { display: none; }   /* over the mods screen's flex below */
+body:not([data-log]) #result { display: none; }
+body[data-log] #result { margin-top: 16px; }
+#log-back { margin-bottom: 16px; }
+#log-back[hidden] { display: none; }
 .log { min-height: 16px; }
 .log .pix { color: var(--lightblue); }
 .log .pix.err { color: var(--lightred); }
@@ -203,23 +209,25 @@ body[data-screen="mods"] #disclaimer { max-width: 1800px; }
   /* its scrollbar, 8-bit style (Safari, Chrome, the desktop app): boxed pixel arrows, a
      checkered track, a framed white thumb; Firefox gets plain colours */
   @supports not selector(::-webkit-scrollbar) {
-    #mods, #voices { scrollbar-color: var(--lightblue) var(--blue); }
+    #mods, #voices, #log { scrollbar-color: var(--lightblue) var(--blue); }
   }
-  #mods::-webkit-scrollbar, #voices::-webkit-scrollbar { width: 24px; }
-  #mods::-webkit-scrollbar-track, #voices::-webkit-scrollbar-track {
+  #mods::-webkit-scrollbar, #voices::-webkit-scrollbar, #log::-webkit-scrollbar { width: 24px; }
+  #mods::-webkit-scrollbar-track, #voices::-webkit-scrollbar-track, #log::-webkit-scrollbar-track {
     background: repeating-conic-gradient(var(--lightblue) 0 25%, var(--blue) 0 50%) 0 0 / 4px 4px;
   }
-  #mods::-webkit-scrollbar-thumb, #voices::-webkit-scrollbar-thumb { background: var(--white); border: 2px solid var(--lightblue); }
-  #mods::-webkit-scrollbar-button:single-button, #voices::-webkit-scrollbar-button:single-button {
+  #mods::-webkit-scrollbar-thumb, #voices::-webkit-scrollbar-thumb, #log::-webkit-scrollbar-thumb { background: var(--white); border: 2px solid var(--lightblue); }
+  #mods::-webkit-scrollbar-button:single-button, #voices::-webkit-scrollbar-button:single-button, #log::-webkit-scrollbar-button:single-button {
     display: block; height: 24px; background: var(--blue) center / 16px 16px no-repeat; border: 2px solid var(--lightblue);
   }
-  #mods::-webkit-scrollbar-button:single-button:decrement, #voices::-webkit-scrollbar-button:single-button:decrement {
+  #mods::-webkit-scrollbar-button:single-button:decrement, #voices::-webkit-scrollbar-button:single-button:decrement, #log::-webkit-scrollbar-button:single-button:decrement {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M3 2h2v1h1v1h1v1h1v1H0V5h1V4h1V3h1z'/%3E%3C/svg%3E");
   }
-  #mods::-webkit-scrollbar-button:single-button:increment, #voices::-webkit-scrollbar-button:single-button:increment {
+  #mods::-webkit-scrollbar-button:single-button:increment, #voices::-webkit-scrollbar-button:single-button:increment, #log::-webkit-scrollbar-button:single-button:increment {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M0 2h8v1H7v1H6v1H5v1H3V5H2V4H1V3H0z'/%3E%3C/svg%3E");
   }
-  #mods::-webkit-scrollbar-button:active, #voices::-webkit-scrollbar-button:active { background-color: var(--lightblue); }
+  #mods::-webkit-scrollbar-button:active, #voices::-webkit-scrollbar-button:active, #log::-webkit-scrollbar-button:active { background-color: var(--lightblue); }
   body[data-screen="mods"] #voices[hidden], body[data-screen="mods"] #mods[hidden] { display: none; }
-  body[data-screen="mods"] #result { flex: 0 1 auto; min-height: 0; max-height: 40%; overflow-y: auto; }
+  body[data-screen="mods"][data-log] #result { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  body[data-screen="mods"] #log { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 12px; }
+  body[data-screen="mods"] #result > :not(#log) { flex: none; }
 }

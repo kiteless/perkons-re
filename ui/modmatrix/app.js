@@ -745,6 +745,7 @@ async function measure(image) {
 
 function showScreen(name) {
   document.body.dataset.screen = name;
+  if (!state.building) showLog(false);
   history.scrollRestoration = "manual";
   scrollTo(0, 0);
   updatePatch();
@@ -984,16 +985,28 @@ function showInfo(info) {
   if (info.official && info.supported) measure(info.image);
 }
 
+/* the whole build log, in place of the mods; it scrolls on its own, following the end
+   unless the user has scrolled up */
 function logLines(lines) {
   const box = $("log");
-  const keep = lines.filter((l) => l.trim()).slice(-10);
+  const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 8;
   box.textContent = "";
-  for (const l of keep) {
+  for (const l of lines.filter((x) => x.trim())) {
     const cls = l.startsWith("?") ? "err" : l === "READY." ? "ok" : "";
     const el = pix("p", cls, l.trim().toUpperCase().slice(0, 120));
     box.append(el);
     pixRender(el);
   }
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}
+
+/* the build log replaces the mods (and back) */
+function showLog(on) {
+  if (on) document.body.dataset.log = "1";
+  else delete document.body.dataset.log;
+  const back = $("log-back");
+  back.hidden = !on || state.building;
+  if (!back.hidden) pixRender(back.querySelector(".pix"));
 }
 
 async function build() {
@@ -1002,6 +1015,8 @@ async function build() {
   btn.classList.add("busy");
   $("dl").hidden = true;
   $("howto").hidden = true;
+  $("log").textContent = "";
+  showLog(true);
   updatePatch();
   const all = [];
   try {
@@ -1035,6 +1050,7 @@ async function build() {
   }
   state.building = false;
   btn.classList.remove("busy");
+  showLog(true);
   updatePatch();
 }
 
@@ -1064,6 +1080,7 @@ async function main(info) {
     showScreen("mods");
   });
   $("repos-back").addEventListener("click", () => history.back());
+  $("log-back").addEventListener("click", () => showLog(false));
   addEventListener("popstate", (e) => showScreen((e.state && e.state.screen) || "repos"));
   for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
   // hover/focus colours change the text colour, which the canvases have to redraw for
