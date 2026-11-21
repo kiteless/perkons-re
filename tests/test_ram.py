@@ -171,6 +171,21 @@ class TestSums(unittest.TestCase):
         self.assertEqual(catalog.ram_used(['a', 'b'], self.MEM), {'main': 90, 'voice': 0, 'store': 0})
         catalog.check_memory(['a', 'b'], self.MEM)
 
+    def test_a_shared_owner_counts_at_its_largest(self):
+        """The voice map's kit slots: each engine measured alone has the table at its own
+        record's size; together, the largest (in whichever order)."""
+        mem = {'areas': self.MEM['areas'], 'platform': {'store': {'vm': 8}},
+               'options': {'small': {'store': {'slots': 24}}, 'big': {'store': {'slots': 40, 'big': 4}}}}
+        for ids in (['small', 'big'], ['big', 'small']):
+            self.assertEqual(catalog.ram_used(ids, mem)['store'], 8 + 40 + 4)
+
+    def test_an_owner_made_bigger_is_the_option_s(self):
+        base = {'ram': {'store': {'vm': 8}}, 'takeovers': {}, 'borrows': {}}
+        got = {'ram': {'store': {'vm': 8, 'slots': 24}, 'main': {'vm': 4}}, 'takeovers': {}, 'borrows': {}}
+        self.assertEqual(catalog.beyond(got, base)['ram'], {'store': {'slots': 24}, 'main': {'vm': 4}})
+        got['ram']['store']['vm'] = 12
+        self.assertEqual(catalog.beyond(got, base)['ram']['store'], {'vm': 12, 'slots': 24})
+
     def test_over_is_refused(self):
         with self.assertRaises(catalog.CatalogError):
             catalog.check_memory(['a', 'c'], self.MEM)

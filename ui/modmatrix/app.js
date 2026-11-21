@@ -604,12 +604,15 @@ function withRequires(ids) {
 }
 
 /* bytes per area for these options together on the platform (in every build): owners
- * shared between options count once */
+ * shared between options count once, at the largest size (catalog.ram_used) */
 function ramUsed(ids) {
   const m = state.memory, owners = {};
   for (const [a, own] of Object.entries(m.platform || {})) owners[a] = { ...own };
   for (const id of ids) {
-    for (const [a, own] of Object.entries(m.options[id] || {})) Object.assign(owners[a] = owners[a] || {}, own);
+    for (const [a, own] of Object.entries(m.options[id] || {})) {
+      const got = owners[a] = owners[a] || {};
+      for (const [k, n] of Object.entries(own)) got[k] = Math.max(got[k] || 0, n);
+    }
   }
   return Object.fromEntries(AREAS.map((a) => [a, Object.values(owners[a] || {}).reduce((s, n) => s + n, 0)]));
 }

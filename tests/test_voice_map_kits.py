@@ -183,6 +183,124 @@ class TestEnginePage(unittest.TestCase):
         self.assertEqual(r.e.sd_written['banks/00/kits/09.kix'], b'PKX1VMAP' + struct.pack('<IH', 2, 0x3214))
 
 
+_slot_images = {}
+SLOT_OWNER = 'src/m4/voicemap/voice_map_m4.c:.pk_axi.kit_slots'
+
+
+def slot_image(kit_bytes):
+    """voice_map + voice_zibens, zibens declaring a kit record of kit_bytes: the kit slots."""
+    if kit_bytes not in _slot_images:
+        from fixtures import SYMBOLS_V130
+        from perkons import voicemap
+        from perkons.emu import Symbols
+        from perkons.patch import Patcher
+        try:
+            zibens = load_patch('voice_zibens')
+        except ImportError:
+            raise unittest.SkipTest('an extra engine: voice-zibens (perkons-re-mods, PERKONS_MODS)')
+        p = Patcher(Image.load(require_image('v1.3.0')))
+        p.symbols = {'m7': Symbols(SYMBOLS_V130), 'm4': Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json'))}
+        p.build_dir = tempfile.mkdtemp()
+        load_patch('voice_map').apply(p)
+        zibens.apply(p)
+        voicemap.engines(p)['zibens']['kit_bytes'] = kit_bytes
+        img = p.result()
+        _slot_images[kit_bytes] = (img, p.cave_symbols['m4host'], p.ram)
+    return _slot_images[kit_bytes]
+
+
+@unittest.skipUnless(shutil.which('arm-none-eabi-gcc'), 'arm-none-eabi-gcc not installed')
+class TestKitSlots(TestEnginePage):
+    """The kit slots: one table for every engine's per-kit sound, a slot per kit and voice
+    owned by the engine that voice has in the kit (and the engine page as before)."""
+    ZIBENS = 4                                    # engine 5: the nibble value
+
+    def rig(self, sd=None):
+        img, cave, _ = slot_image(10)
+        r = M4Rig(img, cave, sd=sd if sd is not None else {'BANKS/00/KITS/00.KIT': b''})
+        seg = img.segment('m4')
+        site = r.sym.site('keys.handler_lit')['addr']
+        r.handler = struct.unpack_from('<I', seg.data, site - seg.addr)[0] & ~1
+        r.e.sent(2)
+        return r
+
+    def slot(self, r, kit, v, engine=ZIBENS, size=10):
+        return r.e.call(r.cave['pk_vm_kit_slot'], kit, v, engine, size, max_insns=100_000)
+
+    def choose(self, r, v, engine):
+        self.open_page(r)
+        self.press(r, 16 * v + engine)
+        self.press(r, MOD)                            # leave: into the kit (and its file)
+        self.apply(r)
+
+    def test_size_is_the_largest_record_in_words(self):
+        _, _, ram = slot_image(10)
+        self.assertEqual(ram['store'][SLOT_OWNER][1], 64 * 4 * 12)
+
+    def test_a_slot_belongs_to_the_voice_s_engine(self):
+        r = self.rig()
+        self.assertEqual(self.slot(r, 0, 2), 0, 'voice 3 runs a stock engine')
+        self.choose(r, 2, self.ZIBENS)
+        self.assertNotEqual(self.slot(r, 0, 2), 0)
+        self.assertEqual(self.slot(r, 0, 1), 0, 'voice 2 is still stock')
+        self.assertEqual(self.slot(r, 1, 2), 0, 'kit 2 still has the stock engine')
+        self.assertEqual(self.slot(r, 0, 2, size=13), 0, 'more than the slot holds')
+        self.assertEqual(self.slot(r, 0, 3) or self.slot(r, 0, 0), 0)
+        self.assertEqual(r.e.call(r.cave['pk_vm_kit_engine'], 0, 2), self.ZIBENS)
+
+    def test_changing_engine_empties_the_slot(self):
+        r = self.rig()
+        self.choose(r, 2, self.ZIBENS)
+        a = self.slot(r, 0, 2)
+        r.e.uc.mem_write(a, bytes(range(1, 13)))
+        self.choose(r, 0, 1)                          # another voice: kept
+        self.assertEqual(bytes(r.e.uc.mem_read(a, 12)), bytes(range(1, 13)))
+        self.choose(r, 2, 0)                          # voice 3 -> engine 1
+        self.choose(r, 2, self.ZIBENS)                # and back: empty
+        self.assertEqual(bytes(r.e.uc.mem_read(self.slot(r, 0, 2), 12)), bytes(12))
+
+    def test_kit_save_into_another_kit_empties_the_changed_voices(self):
+        r = self.rig()
+        self.choose(r, 2, self.ZIBENS)
+        r.e.stub(r.sym.fn['kit_save'], lambda *a: 0)
+        r.e.call(r.cave['pk4_store_kit_save'], 0, 9, max_insns=50_000_000)
+        a = self.slot(r, 9, 2)
+        self.assertNotEqual(a, 0)
+        r.e.uc.mem_write(a, b'\x55' * 12)
+        self.choose(r, 2, 1)                          # voice 3 -> engine 2, then saved into kit 10
+        r.e.call(r.cave['pk4_store_kit_save'], 0, 9, max_insns=50_000_000)
+        self.choose(r, 2, self.ZIBENS)
+        r.e.call(r.cave['pk4_store_kit_save'], 0, 9, max_insns=50_000_000)
+        self.assertEqual(bytes(r.e.uc.mem_read(self.slot(r, 9, 2), 12)), bytes(12))
+
+    def test_bank_load_empties_the_slots(self):
+        rec = b'PKX1VMAP' + struct.pack('<IH', 2, 0x4210)    # voice 4 runs zibens in kit 6
+        r = self.rig(sd={'BANKS/02/KITS/05.KIX': rec, 'BANKS/02/00.PAT': b''})
+        r.e.call(r.cave['pk4_store_bank_load'], 2, max_insns=900_000_000)
+        a = self.slot(r, 5, 3)
+        self.assertNotEqual(a, 0)
+        r.e.uc.mem_write(a, b'\x77' * 12)
+        r.e.call(r.cave['pk4_store_bank_load'], 2, max_insns=900_000_000)
+        self.assertEqual(bytes(r.e.uc.mem_read(a, 12)), bytes(12))
+
+
+class TestKitBytes(unittest.TestCase):
+    def p(self, **sizes):
+        class P:
+            shared = {}
+        p = P()
+        from perkons import voicemap as vmc
+        for name, n in sizes.items():
+            vmc.engines(p)[name] = {'sources': [], 'build': f'pk_{name}_build', 'kit_bytes': n}
+        return vmc.kit_bytes(p)
+
+    def test_the_largest_in_words(self):
+        self.assertEqual(self.p(a=23, b=40, c=6), 40)
+        self.assertEqual(self.p(a=23, c=6), 24)
+        self.assertEqual(self.p(), 0)
+        self.assertEqual(self.p(a=None), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
 

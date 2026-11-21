@@ -328,6 +328,65 @@ class TestStore(unittest.TestCase):
             h.store('kit', 'ABCD', 'c', 'd')
 
 
+@unittest.skipUnless(shutil.which('arm-none-eabi-gcc'), 'arm-none-eabi-gcc not installed')
+class TestStoreFirst(unittest.TestCase):
+    """A 'first' kit store (the voice map's VMAP) is saved first, and loaded first wherever
+    its record is in the file (files written before it was first have it last)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.stock = Image.load(require_image('v1.3.0'))
+        cls.s4, s7 = Symbols(SYMBOLS_V130.replace('-m7.json', '-m4.json')), Symbols(SYMBOLS_V130)
+        p = Patcher(cls.stock)
+        p.symbols = {'m7': s7, 'm4': cls.s4}
+        cls.tmp = tempfile.mkdtemp(prefix='pk-store-first-')
+        p.build_dir = cls.tmp
+        h = m4host.host(p)
+        h.add([STORE])
+        h.store('kit', 'AAAA', 'pk_st_other_save', 'pk_st_other_load')
+        h.store('kit', 'ZZZZ', 'pk_st_first_save', 'pk_st_first_load', first=True)
+        cls.img, cls.s = p.result(), p.cave_symbols['m4host']
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def emu(self, sd=None):
+        e = M4Emu(self.img.segment('m4').data, self.s4, self.img.segment('m7').data, sd=sd or {}).boot()
+        e.call(self.s['pk4_boot'], max_insns=50_000_000)
+        for f in ('kit_save', 'bank_prepare'):
+            e.stub(self.s4.fn[f], lambda *a: 0)
+        return e
+
+    def order(self, e):
+        return bytes(e.r8(self.s['pk_st_order'] + i) for i in range(e.r32(self.s['pk_st_n'])))
+
+    def rec(self, tag, byte):
+        return tag + struct.pack('<I', 1) + byte
+
+    def test_saved_first(self):
+        e = self.emu()
+        e.call(self.s['pk4_store_kit_save'], 0, 4, max_insns=5_000_000)
+        self.assertEqual(e.sd_written['banks/00/kits/04.kix'],
+                         b'PKX1' + self.rec(b'ZZZZ', b'F') + self.rec(b'AAAA', b'A'))
+
+    def test_loaded_first_wherever_it_is(self):
+        for name, body in (('first in the file', self.rec(b'ZZZZ', b'F') + self.rec(b'AAAA', b'A')),
+                           ('last in the file', self.rec(b'AAAA', b'A') + self.rec(b'ZZZZ', b'F')),
+                           ('after a foreign record', self.rec(b'AAAA', b'A') + b'XXXX' + struct.pack('<I', 3)
+                            + b'abc' + self.rec(b'ZZZZ', b'F'))):
+            with self.subTest(name):
+                e = self.emu({'BANKS/01/KITS/02.KIX': b'PKX1' + body, 'BANKS/01/00.PAT': b''})
+                e.call(self.s['pk4_store_bank_load'], 1, max_insns=400_000_000)
+                self.assertEqual(self.order(e), b'FA')
+
+    def test_a_cut_short_file_keeps_the_records_before(self):
+        body = self.rec(b'AAAA', b'A') + b'ZZZZ' + struct.pack('<I', 9) + b'F'
+        e = self.emu({'BANKS/01/KITS/02.KIX': b'PKX1' + body, 'BANKS/01/00.PAT': b''})
+        e.call(self.s['pk4_store_bank_load'], 1, max_insns=400_000_000)
+        self.assertEqual(self.order(e), b'A')
+
+
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'm4host_page.c')
 
 
